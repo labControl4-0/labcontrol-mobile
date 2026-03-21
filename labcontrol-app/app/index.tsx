@@ -1,4 +1,5 @@
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
   Pressable,
@@ -12,6 +13,7 @@ import {
 } from "react-native";
 
 export default function Index() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -75,7 +77,10 @@ export default function Index() {
                 </Pressable>
               </View>
 
-              <Pressable style={styles.forgotButton}>
+              <Pressable
+                style={styles.forgotButton}
+                onPress={() => router.push("/forgotpassword")}
+              >
                 <Text style={styles.forgotText}>Forgot password?</Text>
               </Pressable>
 
