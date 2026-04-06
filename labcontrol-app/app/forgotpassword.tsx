@@ -22,55 +22,57 @@ export default function ForgotPassword() {
       <ScrollView contentContainerStyle={styles.scrollContent} bounces={false}>
         <View style={styles.centeredContainer}>
           <View style={styles.card}>
-            <Pressable
-              style={styles.backButton}
-              onPress={() => router.push("/")}
-            >
-              <Ionicons name="chevron-back" size={26} color="#52627d" />
-            </Pressable>
-
-            <View style={styles.iconBox}>
-              <MaterialIcons name="lock-reset" size={34} color="#1CDAD4" />
-            </View>
-
-            <Text style={styles.title}>Forgot password?</Text>
-            <Text style={styles.description}>
-              Enter your work email address below and we&apos;ll send you a
-              secure link to reset your access credentials.
-            </Text>
-
-            <View style={styles.form}>
-              <Text style={styles.label}>Email Address</Text>
-              <View style={styles.inputWrapper}>
-                <MaterialIcons name="mail-outline" size={20} color="#9cadc6" />
-                <TextInput
-                  style={styles.input}
-                  placeholder="name@labcontroll.com"
-                  placeholderTextColor="#a6b5ca"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  value={email}
-                  onChangeText={setEmail}
-                />
-              </View>
-
-              <Pressable style={styles.sendButton}>
-                <Text style={styles.sendText}>Send Reset Link</Text>
-                <Ionicons name="arrow-forward" size={18} color="#15B0B1" />
+            <View style={styles.contentArea}>
+              <Pressable
+                style={styles.backButton}
+                onPress={() => router.push("/")}
+              >
+                <Ionicons name="chevron-back" size={26} color="#52627d" />
               </Pressable>
 
-              <Text style={styles.loginText}>
-                Remember your password?{" "}
-                <Text style={styles.loginLink} onPress={() => router.push("/")}>
-                  Log in
-                </Text>
-              </Text>
-            </View>
+              <View style={styles.iconBox}>
+                <MaterialIcons name="lock-reset" size={34} color="#1CDAD4" />
+              </View>
 
-            <View style={styles.footerWrap}>
-              <Text style={styles.copyText}>
-                © 2024 LabControll Inc. All rights reserved.
+              <Text style={styles.title}>Forgot password?</Text>
+              <Text style={styles.description}>
+                Enter your work email address below and we&apos;ll send you a
+                secure link to reset your access credentials.
               </Text>
+
+              <View style={styles.form}>
+                <Text style={styles.label}>Email Address</Text>
+                <View style={styles.inputWrapper}>
+                  <MaterialIcons name="mail-outline" size={20} color="#9cadc6" />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="name@labcontroll.com"
+                    placeholderTextColor="#a6b5ca"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    value={email}
+                    onChangeText={setEmail}
+                  />
+                </View>
+
+                <Pressable style={styles.sendButton}>
+                  <Text style={styles.sendText}>Send Reset Link</Text>
+                  <Ionicons name="arrow-forward" size={18} color="#15B0B1" />
+                </Pressable>
+
+                <Text style={styles.loginText}>
+                  Remember your password?{" "}
+                  <Text style={styles.loginLink} onPress={() => router.push("/")}>
+                    Log in
+                  </Text>
+                </Text>
+              </View>
+
+              <View style={styles.footerWrap}>
+                <Text style={styles.copyText}>
+                  © 2024 LabControll Inc. All rights reserved.
+                </Text>
+              </View>
             </View>
           </View>
         </View>
@@ -99,10 +101,13 @@ const styles = StyleSheet.create({
     width: "100%",
     backgroundColor: "#f7f9fc",
     borderRadius: 18,
+    paddingTop: 30,
+    overflow: "hidden",
     borderWidth: 1,
     borderColor: "#e9eef7",
+  },
+  contentArea: {
     paddingHorizontal: 28,
-    paddingTop: 14,
     paddingBottom: 24,
   },
   backButton: {
@@ -193,7 +198,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   footerWrap: {
-    marginTop: 120,
+    marginTop: 56,
     alignItems: "center",
   },
   copyText: {
