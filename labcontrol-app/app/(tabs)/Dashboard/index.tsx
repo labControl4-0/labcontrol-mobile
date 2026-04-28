@@ -9,6 +9,8 @@ import {
   Dimensions,
 } from "react-native";
 import { Ionicons, MaterialCommunityIcons, Feather } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import { BottomNavBar } from "../../components/BottomNavBar";
 
 const { width } = Dimensions.get("window");
 
@@ -69,6 +71,8 @@ function StatCard({ item }: any) {
 }
 
 export default function DashboardScreen() {
+  const router = useRouter();
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView
@@ -77,17 +81,21 @@ export default function DashboardScreen() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity>
-            <Ionicons name="menu" size={24} color="#111827" />
-          </TouchableOpacity>
+          <View style={styles.headerSpacer} />
 
           <Text style={styles.logo}>LabControl 4.0</Text>
 
           <View style={styles.headerRight}>
-            <Ionicons name="notifications-outline" size={20} color="#374151" />
-            <View style={styles.avatarMini}>
+            <TouchableOpacity onPress={() => router.push("/(tabs)/Notifications" as any)}>
+              <Ionicons name="notifications-outline" size={20} color="#374151" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => router.push("/UserProfileSettings")}
+              style={styles.avatarMini}
+            >
               <Text style={styles.avatarLetter}>I</Text>
-            </View>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -136,29 +144,9 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        {/* Bottom Tab */}
-        <View style={styles.bottomTab}>
-          <TouchableOpacity style={styles.tabItem}>
-            <Ionicons name="grid" size={20} color="#2563EB" />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.tabItem}>
-            <Ionicons name="map-outline" size={20} color="#9CA3AF" />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.tabItem}>
-            <Ionicons name="flash-outline" size={20} color="#9CA3AF" />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.tabItem}>
-            <Ionicons name="notifications-outline" size={20} color="#9CA3AF" />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.tabItem}>
-            <Ionicons name="person-outline" size={20} color="#9CA3AF" />
-          </TouchableOpacity>
-        </View>
       </ScrollView>
+
+      <BottomNavBar activeTab="dashboard" />
     </SafeAreaView>
   );
 }
@@ -171,13 +159,17 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 22,
     paddingTop: 14,
-    paddingBottom: 40,
+    paddingBottom: 132,
   },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 20,
+  },
+  headerSpacer: {
+    width: 24,
+    height: 24,
   },
   logo: {
     fontSize: 14,
@@ -323,17 +315,5 @@ const styles = StyleSheet.create({
     backgroundColor: "#2563EB",
     borderBottomLeftRadius: 6,
     borderBottomRightRadius: 6,
-  },
-  bottomTab: {
-    marginTop: 28,
-    backgroundColor: "#fff",
-    borderRadius: 20,
-    paddingVertical: 16,
-    flexDirection: "row",
-    justifyContent: "space-around",
-    alignItems: "center",
-  },
-  tabItem: {
-    alignItems: "center",
   },
 });

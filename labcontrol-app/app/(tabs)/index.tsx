@@ -79,7 +79,7 @@ export default function Index() {
 
               <Pressable
                 style={styles.forgotButton}
-                onPress={() => router.push("ForgotPassword")}
+                onPress={() => router.push("/ForgotPassword")}
               >
                 <Text style={styles.forgotText}>Forgot password?</Text>
               </Pressable>
@@ -91,7 +91,7 @@ export default function Index() {
             </View>
 
             <View style={styles.bottomStrip}>
-              <Pressable onPress={() => router.push("CreateAccount")}>
+              <Pressable onPress={() => router.push("/CreateAccount")}>
                 <Text style={styles.bottomText}>
                   New to the platform?{" "}
                   <Text style={styles.linkText}>Create account</Text>
