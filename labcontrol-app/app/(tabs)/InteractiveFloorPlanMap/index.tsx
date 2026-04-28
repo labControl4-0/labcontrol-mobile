@@ -416,7 +416,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.xs,
     borderBottomWidth: 1,
     borderBottomColor: colors.slate100,
   },
@@ -442,11 +442,12 @@ const styles = StyleSheet.create({
   tabsContainer: {
     borderBottomWidth: 1,
     borderBottomColor: colors.slate100,
+    flexGrow: 0,
   },
 
   tabsContent: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
     gap: spacing.sm,
   },
 
@@ -498,7 +499,7 @@ const styles = StyleSheet.create({
 
   scrollContent: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
+    paddingTop: spacing.xs,
     paddingBottom: spacing.lg,
   },
 
@@ -506,7 +507,7 @@ const styles = StyleSheet.create({
   zonesGrid: {
     flexDirection: 'row',
     gap: spacing.md,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.md,
   },
 
   zoneCard: {
