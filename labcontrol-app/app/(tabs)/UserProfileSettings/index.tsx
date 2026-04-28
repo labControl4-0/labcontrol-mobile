@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   SafeAreaView,
   View,
@@ -8,12 +8,17 @@ import {
   TouchableOpacity,
   ScrollView,
   Dimensions,
+  Modal,
+  TextInput,
+  Alert,
 } from "react-native";
 import {
   Ionicons,
   MaterialCommunityIcons,
   Feather,
 } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import { BottomNavBar } from "../../components/BottomNavBar";
 
 const { width } = Dimensions.get("window");
 
@@ -23,41 +28,28 @@ const stats = [
   { label: "Uptime", value: "99%", highlight: true },
 ];
 
-const accountSettings = [
-  {
-    icon: "account-outline",
-    title: "Personal Information",
-    subtitle: "Email, Phone, Department ID",
-  },
-  {
-    icon: "shield-account-outline",
-    title: "Permissions & Roles",
-    subtitle: "Admin Access, Zone Control",
-  },
-];
-
 const appPreferences = [
   {
     icon: "notifications-outline",
     title: "Notifications",
     subtitle: "Critical Alerts, Reports",
     badge: "2",
+    route: "/(tabs)/Notifications",
   },
   {
     icon: "language",
     title: "Language & Region",
     subtitle: "English (US), UTC-5",
   },
-  {
-    icon: "lock-outline",
-    title: "Security",
-    subtitle: "Biometrics, Password",
-  },
 ];
 
-function MenuCard({ item }: any) {
+function MenuCard({ item, onPress }: any) {
   return (
-    <TouchableOpacity style={styles.menuCard} activeOpacity={0.8}>
+    <TouchableOpacity
+      style={styles.menuCard}
+      activeOpacity={0.8}
+      onPress={onPress}
+    >
       <View style={styles.menuLeft}>
         <View style={styles.iconBox}>
           <MaterialCommunityIcons
@@ -86,6 +78,45 @@ function MenuCard({ item }: any) {
 }
 
 export default function ProfileSettingsScreen() {
+  const router = useRouter();
+  const [profileName, setProfileName] = useState("Dr. Elena Rossi");
+  const [tempName, setTempName] = useState(profileName);
+  const [profileImage, setProfileImage] = useState(
+    "https://images.unsplash.com/photo-1494790108377-be9c29b29330"
+  );
+  const [editModalVisible, setEditModalVisible] = useState(false);
+
+  const handleSaveName = () => {
+    if (tempName.trim()) {
+      setProfileName(tempName);
+      setEditModalVisible(false);
+      Alert.alert("Success", "Profile name updated successfully!");
+    } else {
+      Alert.alert("Error", "Name cannot be empty");
+    }
+  };
+
+  const handleChangePhoto = () => {
+    Alert.alert("Change Photo", "Integrate image picker library here");
+  };
+
+  const handleLogout = () => {
+    Alert.alert("Log out", "Do you want to unlink this account?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Log out",
+        style: "destructive",
+        onPress: () => router.replace("/"),
+      },
+    ]);
+  };
+
+  const handleMenuPress = (item: any) => {
+    if (item.route) {
+      router.push(item.route as any);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView
@@ -94,13 +125,13 @@ export default function ProfileSettingsScreen() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity>
+          <TouchableOpacity onPress={() => router.push("/Dashboard")}>
             <Ionicons name="arrow-back" size={22} color="#111827" />
           </TouchableOpacity>
 
           <Text style={styles.headerTitle}>Profile & Settings</Text>
 
-          <TouchableOpacity>
+          <TouchableOpacity onPress={() => setEditModalVisible(true)}>
             <Text style={styles.editText}>Edit</Text>
           </TouchableOpacity>
         </View>
@@ -110,14 +141,21 @@ export default function ProfileSettingsScreen() {
           <View style={styles.avatarWrapper}>
             <Image
               source={{
-                uri: "https://images.unsplash.com/photo-1494790108377-be9c29b29330",
+                uri: profileImage,
               }}
               style={styles.avatar}
+              resizeMode="contain"
             />
+            <TouchableOpacity 
+              style={styles.editAvatarButton}
+              onPress={handleChangePhoto}
+            >
+              <Ionicons name="camera" size={16} color="#fff" />
+            </TouchableOpacity>
             <View style={styles.onlineDot} />
           </View>
 
-          <Text style={styles.name}>Dr. Elena Rossi</Text>
+          <Text style={styles.name}>{profileName}</Text>
 
           <View style={styles.roleBadge}>
             <Text style={styles.roleText}>SYSTEM ADMINISTRATOR</Text>
@@ -145,54 +183,94 @@ export default function ProfileSettingsScreen() {
           ))}
         </View>
 
-        {/* Account Settings */}
-        <Text style={styles.sectionTitle}>Account Settings</Text>
-        {accountSettings.map((item, index) => (
-          <MenuCard key={index} item={item} />
-        ))}
-
         {/* App Preferences */}
         <Text style={styles.sectionTitle}>App Preferences</Text>
         {appPreferences.map((item, index) => (
-          <MenuCard key={index} item={item} />
+          <MenuCard
+            key={index}
+            item={item}
+            onPress={item.route ? () => handleMenuPress(item) : undefined}
+          />
         ))}
 
         {/* Logout */}
-        <TouchableOpacity style={styles.logoutButton}>
+        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
           <Text style={styles.logoutText}>Log Out</Text>
         </TouchableOpacity>
 
-        {/* Bottom Tab */}
-        <View style={styles.bottomTab}>
-          <TouchableOpacity style={styles.tabItem}>
-            <Ionicons name="grid-outline" size={20} color="#9CA3AF" />
-            <Text style={styles.tabText}>Dashboard</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.tabItem}>
-            <Ionicons name="hardware-chip-outline" size={20} color="#9CA3AF" />
-            <Text style={styles.tabText}>Devices</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.centerTab}>
-            <MaterialCommunityIcons
-              name="flask-outline"
-              size={24}
-              color="#2563EB"
-            />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.tabItem}>
-            <Ionicons name="alert-circle-outline" size={20} color="#9CA3AF" />
-            <Text style={styles.tabText}>Alerts</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.tabItem}>
-            <Ionicons name="person-outline" size={20} color="#2563EB" />
-            <Text style={[styles.tabText, { color: "#2563EB" }]}>Profile</Text>
-          </TouchableOpacity>
-        </View>
       </ScrollView>
+
+      <BottomNavBar activeTab="profile" />
+
+      {/* Edit Profile Modal */}
+      <Modal
+        visible={editModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setEditModalVisible(false)}
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setEditModalVisible(false)}>
+              <Text style={styles.modalCancel}>Cancel</Text>
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Edit Profile</Text>
+            <TouchableOpacity onPress={handleSaveName}>
+              <Text style={styles.modalSave}>Save</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.modalContent}>
+            {/* Edit Photo Section */}
+            <View style={styles.editPhotoSection}>
+              <Text style={styles.modalLabel}>Profile Photo</Text>
+              <TouchableOpacity 
+                style={styles.photoEditButton}
+                onPress={handleChangePhoto}
+              >
+                <Image
+                  source={{ uri: profileImage }}
+                  style={styles.photoPreview}
+                  resizeMode="contain"
+                />
+                <View style={styles.photoOverlay}>
+                  <Ionicons name="camera" size={24} color="#fff" />
+                </View>
+              </TouchableOpacity>
+              <Text style={styles.photoHint}>Tap to change photo</Text>
+            </View>
+
+            {/* Edit Name Section */}
+            <View style={styles.editNameSection}>
+              <Text style={styles.modalLabel}>Full Name</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="Enter your name"
+                value={tempName}
+                onChangeText={setTempName}
+                placeholderTextColor="#9CA3AF"
+              />
+            </View>
+
+            {/* Info Section */}
+            <View style={styles.infoSection}>
+              <Text style={styles.infoTitle}>Account Information</Text>
+              <View style={styles.infoCard}>
+                <Text style={styles.infoLabel}>Email</Text>
+                <Text style={styles.infoValue}>elena.rossi@labcontrol.com</Text>
+              </View>
+              <View style={styles.infoCard}>
+                <Text style={styles.infoLabel}>Role</Text>
+                <Text style={styles.infoValue}>System Administrator</Text>
+              </View>
+              <View style={styles.infoCard}>
+                <Text style={styles.infoLabel}>Account Type</Text>
+                <Text style={styles.infoValue}>Enterprise Edition</Text>
+              </View>
+            </View>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -205,7 +283,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 24,
     paddingTop: 16,
-    paddingBottom: 40,
+    paddingBottom: 132,
   },
   header: {
     flexDirection: "row",
@@ -214,13 +292,14 @@ const styles = StyleSheet.create({
     marginBottom: 28,
   },
   headerTitle: {
-    fontSize: width * 0.018,
-    fontWeight: "100",
+    fontSize: 18,
+    fontWeight: "600",
     color: "#111827",
   },
   editText: {
     color: "#2563EB",
     fontWeight: "600",
+    fontSize: 14,
   },
   profileSection: {
     alignItems: "center",
@@ -231,9 +310,21 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   avatar: {
-    width: 90,
-    height: 90,
+    width: 108,
+    height: 108,
     borderRadius: 45,
+    backgroundColor: "#fff",
+  },
+  editAvatarButton: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#2563EB",
+    justifyContent: "center",
+    alignItems: "center",
   },
   onlineDot: {
     width: 16,
@@ -362,30 +453,112 @@ const styles = StyleSheet.create({
     color: "#DC2626",
     fontWeight: "600",
   },
-  bottomTab: {
-    marginTop: 24,
-    backgroundColor: "#fff",
-    borderRadius: 24,
-    paddingVertical: 14,
+  // Modal Styles
+  modalContainer: {
+    flex: 1,
+    backgroundColor: "#F5F7FB",
+  },
+  modalHeader: {
     flexDirection: "row",
-    justifyContent: "space-around",
+    justifyContent: "space-between",
     alignItems: "center",
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
   },
-  tabItem: {
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#111827",
+  },
+  modalCancel: {
+    fontSize: 14,
+    color: "#6B7280",
+    fontWeight: "500",
+  },
+  modalSave: {
+    fontSize: 14,
+    color: "#2563EB",
+    fontWeight: "600",
+  },
+  modalContent: {
+    flex: 1,
+    paddingHorizontal: 24,
+    paddingTop: 24,
+  },
+  modalLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#111827",
+    marginBottom: 12,
+  },
+  editPhotoSection: {
     alignItems: "center",
+    marginBottom: 32,
   },
-  tabText: {
-    fontSize: 11,
-    color: "#9CA3AF",
-    marginTop: 4,
+  photoEditButton: {
+    position: "relative",
+    marginBottom: 12,
   },
-  centerTab: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: "#EFF6FF",
+  photoPreview: {
+    width: 112,
+    height: 112,
+    borderRadius: 50,
+    backgroundColor: "#fff",
+  },
+  photoOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 50,
+    backgroundColor: "rgba(0, 0, 0, 0.4)",
     justifyContent: "center",
     alignItems: "center",
-    marginTop: -30,
+  },
+  photoHint: {
+    fontSize: 12,
+    color: "#9CA3AF",
+    fontStyle: "italic",
+  },
+  editNameSection: {
+    marginBottom: 32,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: "#111827",
+    backgroundColor: "#fff",
+  },
+  infoSection: {
+    marginBottom: 24,
+  },
+  infoTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#111827",
+    marginBottom: 12,
+  },
+  infoCard: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
+  },
+  infoLabel: {
+    fontSize: 12,
+    color: "#9CA3AF",
+    marginBottom: 4,
+  },
+  infoValue: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#111827",
   },
 });
