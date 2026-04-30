@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 
 const { width } = Dimensions.get('window');
 
@@ -64,90 +65,23 @@ const radius = {
 // HEADER COMPONENT
 // ============================================================================
 
-const Header: React.FC = () => (
+interface HeaderProps {
+  title: string;
+  subtitle: string;
+  onBack: () => void;
+}
+
+const Header: React.FC<HeaderProps> = ({ title, subtitle, onBack }) => (
   <View style={styles.header}>
-    <TouchableOpacity hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+    <TouchableOpacity hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} onPress={onBack}>
       <Ionicons name="arrow-back" size={24} color={colors.slate900} />
     </TouchableOpacity>
 
     <View style={styles.headerCenter}>
-      <Text style={styles.headerTitle}>Floor 4 - Research Lab</Text>
-      <Text style={styles.headerSubtitle}>Building A · West Wing</Text>
+      <Text style={styles.headerTitle}>{title}</Text>
+      <Text style={styles.headerSubtitle}>{subtitle}</Text>
     </View>
-
-    <TouchableOpacity hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-      <MaterialIcons name="settings" size={24} color={colors.slate900} />
-    </TouchableOpacity>
   </View>
-);
-
-// ============================================================================
-// TAB CHIP COMPONENT
-// ============================================================================
-
-interface TabChipProps {
-  label: string;
-  active: boolean;
-  badge?: number;
-  onPress: () => void;
-}
-
-const TabChip: React.FC<TabChipProps> = ({ label, active, badge, onPress }) => (
-  <TouchableOpacity
-    style={[styles.tabChip, active && styles.tabChipActive]}
-    onPress={onPress}
-    activeOpacity={0.7}
-  >
-    <Text style={[styles.tabChipText, active && styles.tabChipTextActive]}>
-      {label}
-    </Text>
-    {badge !== undefined && (
-      <View style={styles.badge}>
-        <Text style={styles.badgeText}>{badge}</Text>
-      </View>
-    )}
-  </TouchableOpacity>
-);
-
-// ============================================================================
-// TABS SECTION
-// ============================================================================
-
-interface TabsProps {
-  activeTab: string;
-  onTabChange: (tab: string) => void;
-}
-
-const Tabs: React.FC<TabsProps> = ({ activeTab, onTabChange }) => (
-  <ScrollView
-    horizontal
-    showsHorizontalScrollIndicator={false}
-    style={styles.tabsContainer}
-    contentContainerStyle={styles.tabsContent}
-    scrollEventThrottle={16}
-  >
-    <TabChip
-      label="All Zones"
-      active={activeTab === 'zones'}
-      onPress={() => onTabChange('zones')}
-    />
-    <TabChip
-      label="Alerts"
-      active={activeTab === 'alerts'}
-      badge={2}
-      onPress={() => onTabChange('alerts')}
-    />
-    <TabChip
-      label="Occupancy"
-      active={activeTab === 'occupancy'}
-      onPress={() => onTabChange('occupancy')}
-    />
-    <TabChip
-      label="Energy"
-      active={activeTab === 'energy'}
-      onPress={() => onTabChange('energy')}
-    />
-  </ScrollView>
 );
 
 // ============================================================================
@@ -233,9 +167,6 @@ const LabStatusHeader: React.FC = () => (
       </View>
       <Text style={styles.labSubtitle}>Zone B · Critical Infrastructure</Text>
     </View>
-    <TouchableOpacity hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-      <MaterialIcons name="more-vert" size={20} color={colors.slate600} />
-    </TouchableOpacity>
   </View>
 );
 
@@ -305,97 +236,41 @@ const MetricsGrid: React.FC = () => (
   </View>
 );
 
-// ============================================================================
-// ACTION BUTTON
-// ============================================================================
-
-interface ActionButtonProps {
-  label: string;
-  onPress?: () => void;
-}
-
-const ActionButton: React.FC<ActionButtonProps> = ({
-  label,
-  onPress,
-}) => (
-  <TouchableOpacity
-    style={styles.actionButton}
-    onPress={onPress}
-    activeOpacity={0.8}
-  >
-    <MaterialIcons name="tune" size={18} color={colors.white} style={{ marginRight: 8 }} />
-    <Text style={styles.actionButtonText}>{label}</Text>
-  </TouchableOpacity>
-);
-
-// ============================================================================
-// BOTTOM NAVIGATION
-// ============================================================================
-
-interface BottomNavProps {
-  activeIcon: string;
-  onNavigate: (icon: string) => void;
-}
-
-const BottomNavigation: React.FC<BottomNavProps> = ({ activeIcon, onNavigate }) => {
-  const navItems = [
-    { icon: 'home', id: 'home' },
-    { icon: 'map', id: 'map', active: true },
-    { icon: 'assessment', id: 'assessment' },
-    { icon: 'notifications', id: 'notifications', badge: true },
-    { icon: 'person', id: 'person' },
-  ];
-
-  return (
-    <View style={styles.bottomNav}>
-      {navItems.map((item) => (
-        <TouchableOpacity
-          key={item.id}
-          style={styles.bottomNavItem}
-          onPress={() => onNavigate(item.id)}
-        >
-          <View style={styles.navItemContent}>
-            <MaterialIcons
-              name={item.icon as any}
-              size={24}
-              color={activeIcon === item.id ? colors.blue : colors.slate400}
-            />
-            {item.badge && <View style={styles.navBadge} />}
-          </View>
-        </TouchableOpacity>
-      ))}
-    </View>
-  );
-};
-
-// ============================================================================
-// MAIN SCREEN
-// ============================================================================
-
 export default function InteractiveFloorPlanMap() {
-  const [activeTab, setActiveTab] = useState('zones');
-  const [activeNav, setActiveNav] = useState('map');
+  const params = useLocalSearchParams<{ labName?: string; labStatus?: string; labDetail?: string }>();
+  const router = useRouter();
+  const labName = typeof params.labName === 'string' ? params.labName : 'Lab 402';
+  const labStatus = typeof params.labStatus === 'string' ? params.labStatus : 'NORMAL';
+  const labDetail = typeof params.labDetail === 'string' ? params.labDetail : 'Zone B · Critical Infrastructure';
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.white} />
 
-      <Header />
-      <Tabs activeTab={activeTab} onTabChange={setActiveTab} />
+      <Header title={labName} subtitle={labDetail} onBack={() => router.push('/Labs')} />
 
       <ScrollView
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        <ZonesGrid />
-        <LabStatusHeader />
-        <MetricsGrid />
-        <ActionButton label="Adjust Environment Settings" />
-        <View style={{ height: spacing.lg }} />
+        <View style={styles.visualizationShell}>
+          <ZonesGrid />
+          <LabStatusHeader />
+          <View style={styles.statusRow}>
+            <View style={styles.statusPill}>
+              <Text style={styles.statusPillLabel}>STATUS</Text>
+              <Text style={styles.statusPillValue}>{labStatus}</Text>
+            </View>
+            <View style={styles.statusPill}>
+              <Text style={styles.statusPillLabel}>LAB</Text>
+              <Text style={styles.statusPillValue}>{labName}</Text>
+            </View>
+          </View>
+          <MetricsGrid />
+          <View style={{ height: spacing.lg }} />
+        </View>
       </ScrollView>
-
-      <BottomNavigation activeIcon={activeNav} onNavigate={setActiveNav} />
     </SafeAreaView>
   );
 }
@@ -424,6 +299,7 @@ const styles = StyleSheet.create({
   headerCenter: {
     flex: 1,
     marginHorizontal: spacing.md,
+    alignItems: 'center',
   },
 
   headerTitle: {
@@ -431,65 +307,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.slate900,
     lineHeight: 20,
+    textAlign: 'center',
   },
   headerSubtitle: {
     fontSize: 12,
     color: colors.slate600,
     marginTop: 2,
-  },
-
-  // TABS
-  tabsContainer: {
-    borderBottomWidth: 1,
-    borderBottomColor: colors.slate100,
-    flexGrow: 0,
-  },
-
-  tabsContent: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    gap: spacing.sm,
-  },
-
- tabChip: {
-    height: 36,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 6, // 🔽 diminui aqui
-    borderRadius: radius.full,
-    backgroundColor: colors.slate100,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-},
-
-  tabChipActive: {
-    backgroundColor: colors.slate900,
-  },
-
-  tabChipText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: colors.slate700,
-  },
-
-  tabChipTextActive: {
-    color: colors.white,
-  },
-
-  badge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: radius.full,
-    backgroundColor: colors.red,
-    minWidth: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
-  badgeText: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: colors.white,
+    textAlign: 'center',
   },
 
   // SCROLL VIEW
@@ -503,11 +327,16 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.lg,
   },
 
+  visualizationShell: {
+    alignItems: 'center',
+  },
+
   // ZONES GRID
   zonesGrid: {
     flexDirection: 'row',
     gap: spacing.md,
     marginBottom: spacing.md,
+    width: '100%',
   },
 
   zoneCard: {
@@ -550,9 +379,8 @@ const styles = StyleSheet.create({
 
   // LAB STATUS
   labStatusContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    width: '100%',
+    alignItems: 'center',
     marginBottom: spacing.xl,
     paddingBottom: spacing.lg,
     borderBottomWidth: 1,
@@ -564,6 +392,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.md,
     marginBottom: spacing.xs,
+    justifyContent: 'center',
   },
 
   labTitle: {
@@ -588,6 +417,40 @@ const styles = StyleSheet.create({
   labSubtitle: {
     fontSize: 12,
     color: colors.slate600,
+    textAlign: 'center',
+  },
+
+  statusRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    marginBottom: spacing.xl,
+    width: '100%',
+    justifyContent: 'center',
+  },
+
+  statusPill: {
+    flex: 1,
+    maxWidth: 150,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.full,
+    backgroundColor: colors.slate100,
+    alignItems: 'center',
+  },
+
+  statusPillLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: colors.slate600,
+    letterSpacing: 0.6,
+    marginBottom: 2,
+  },
+
+  statusPillValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.slate900,
+    textAlign: 'center',
   },
 
   // METRICS
@@ -596,6 +459,8 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.md,
     marginBottom: spacing.xl,
+    width: '100%',
+    justifyContent: 'center',
   },
 
   metricCard: {
@@ -636,78 +501,5 @@ const styles = StyleSheet.create({
     color: colors.slate600,
   },
 
-  // ACTION BUTTON
-  actionButton: {
-    backgroundColor: colors.blue,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.xl,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: spacing.lg,
-    ...Platform.select({
-      ios: {
-        shadowColor: colors.blue,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 6,
-      },
-    }),
-  },
 
-  actionButtonText: {
-    color: colors.white,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-
-  // BOTTOM NAVIGATION
-  bottomNav: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    backgroundColor: colors.white,
-    paddingVertical: spacing.md,
-    marginHorizontal: spacing.lg,
-    marginVertical: spacing.md,
-    borderRadius: radius.xl,
-    borderTopWidth: 1,
-    borderTopColor: colors.slate100,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.08,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
-  },
-
-  bottomNavItem: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-  },
-
-  navItemContent: {
-    position: 'relative',
-  },
-
-  navBadge: {
-    position: 'absolute',
-    top: -6,
-    right: -6,
-    width: 8,
-    height: 8,
-    borderRadius: radius.full,
-    backgroundColor: colors.red,
-  },
 });

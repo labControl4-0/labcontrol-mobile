@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
 } from "react-native";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { BottomNavBar } from "../../components/BottomNavBar";
 
 const notifications = [
@@ -74,6 +74,8 @@ function NotificationCard({ item }: any) {
 
 export default function NotificationsScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ from?: string }>();
+  const backRoute = params.from === "profile" ? "/UserProfileSettings" : "/Dashboard";
 
   return (
     <SafeAreaView style={styles.container}>
@@ -82,7 +84,7 @@ export default function NotificationsScreen() {
         contentContainerStyle={styles.scrollContent}
       >
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.push("/Dashboard") }>
+          <TouchableOpacity onPress={() => router.push(backRoute)}>
             <Ionicons name="arrow-back" size={22} color="#111827" />
           </TouchableOpacity>
 

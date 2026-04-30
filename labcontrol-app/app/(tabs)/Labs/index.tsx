@@ -28,11 +28,28 @@ export default function LabsScreen() {
 
         <View style={styles.list}>
           {labs.map((item) => (
-            <View key={item.name} style={styles.card}>
-              <Text style={styles.cardTitle}>{item.name}</Text>
+            <TouchableOpacity
+              key={item.name}
+              style={styles.card}
+              activeOpacity={0.8}
+              onPress={() =>
+                router.push({
+                  pathname: "/InteractiveFloorPlanMap",
+                  params: {
+                    labName: item.name,
+                    labStatus: item.status,
+                    labDetail: item.detail,
+                  },
+                })
+              }
+            >
+              <View style={styles.cardHeader}>
+                <Text style={styles.cardTitle}>{item.name}</Text>
+                <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+              </View>
               <Text style={styles.cardStatus}>{item.status}</Text>
               <Text style={styles.cardDetail}>{item.detail}</Text>
-            </View>
+            </TouchableOpacity>
           ))}
         </View>
 
@@ -52,6 +69,7 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 13, color: "#6B7280", lineHeight: 20, marginBottom: 16 },
   list: { gap: 12 },
   card: { backgroundColor: "#fff", borderRadius: 18, padding: 16 },
+  cardHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   cardTitle: { fontSize: 15, fontWeight: "700", color: "#111827" },
   cardStatus: { marginTop: 6, fontSize: 12, fontWeight: "700", color: "#2563EB" },
   cardDetail: { marginTop: 4, fontSize: 12, color: "#6B7280" },

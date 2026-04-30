@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   SafeAreaView,
   View,
@@ -6,13 +6,11 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Dimensions,
 } from "react-native";
-import { Ionicons, MaterialCommunityIcons, Feather } from "@expo/vector-icons";
+import { Ionicons, Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { BottomNavBar } from "../../components/BottomNavBar";
-
-const { width } = Dimensions.get("window");
+import { getAuthToken, clearAuthSession, getAuthSession } from "../../../lib/auth";
 
 const statsCards = [
   {
@@ -30,11 +28,11 @@ const statsCards = [
     badge: "+1.2%",
   },
   {
-    icon: "cube-outline",
-    title: "Active Machines",
-    value: "12",
-    unit: "/15",
-    badge: "Stable",
+    icon: "person-outline",
+    title: "Registered Users",
+    value: "--",
+    unit: "users",
+    badge: "Live",
   },
   {
     icon: "warning-outline",
@@ -72,6 +70,33 @@ function StatCard({ item }: any) {
 
 export default function DashboardScreen() {
   const router = useRouter();
+  const [registeredUsers, setRegisteredUsers] = useState<string>("--");
+  const [userName, setUserName] = useState<string>("User");
+
+  useEffect(() => {
+    const loadDashboard = async () => {
+      try {
+        const session = await getAuthSession();
+
+        if (!session) {
+          router.replace("/");
+          return;
+        }
+
+        setUserName(session.name || "User");
+      } catch (error) {
+        console.error("Failed to load dashboard:", error);
+      }
+    };
+
+    loadDashboard();
+  }, []);
+
+  const dashboardCards = statsCards.map((card) =>
+    card.title === "Registered Users"
+      ? { ...card, value: registeredUsers }
+      : card
+  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -79,12 +104,9 @@ export default function DashboardScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerSpacer} />
-
           <Text style={styles.logo}>LabControl 4.0</Text>
-
           <View style={styles.headerRight}>
             <TouchableOpacity onPress={() => router.push("/(tabs)/Notifications" as any)}>
               <Ionicons name="notifications-outline" size={20} color="#374151" />
@@ -94,22 +116,22 @@ export default function DashboardScreen() {
               onPress={() => router.push("/UserProfileSettings")}
               style={styles.avatarMini}
             >
-              <Text style={styles.avatarLetter}>I</Text>
+              <Text style={styles.avatarLetter}>
+                {userName.charAt(0).toUpperCase()}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        <Text style={styles.greeting}>Good morning, Dr. Vince</Text>
+        <Text style={styles.greeting}>Good morning, {userName}</Text>
         <Text style={styles.pageTitle}>Facility Overview</Text>
 
-        {/* Stats */}
         <View style={styles.grid}>
-          {statsCards.map((item, index) => (
+          {dashboardCards.map((item, index) => (
             <StatCard key={index} item={item} />
           ))}
         </View>
 
-        {/* Energy Trends */}
         <View style={styles.largeCard}>
           <View style={styles.sectionHeader}>
             <View>
@@ -124,7 +146,6 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        {/* Lab Temperature */}
         <View style={styles.largeCard}>
           <View style={styles.sectionHeader}>
             <View>
