@@ -13,7 +13,7 @@ import {
   View,
 } from "react-native";
 
-import { register } from "../services/authService";
+import { register } from "../../../services/authService";
 
 export default function CreateAccount() {
   const router = useRouter();
@@ -87,68 +87,47 @@ export default function CreateAccount() {
             <View style={styles.form}>
               <Text style={styles.label}>FULL NAME</Text>
               <View style={styles.inputWrapper}>
-                <MaterialIcons
-                  name="person-outline"
-                  size={20}
-                  color="#9aa5bd"
-                />
+                <MaterialIcons name="person-outline" size={20} color="#9aa5bd" />
                 <TextInput
                   style={styles.input}
                   placeholder="John Doe"
                   placeholderTextColor="#9aa5bd"
                   autoCapitalize="words"
                   value={fullName}
-                  onChangeText={(v) => {
-                    setFullName(v);
-                    clearError();
-                  }}
+                  onChangeText={(v) => { setFullName(v); clearError(); }}
                   editable={!loading}
                 />
               </View>
 
               <Text style={[styles.label, styles.marginTop]}>EMAIL</Text>
               <View style={styles.inputWrapper}>
-                <MaterialIcons
-                  name="alternate-email"
-                  size={20}
-                  color="#9aa5bd"
-                />
+                <MaterialIcons name="alternate-email" size={20} color="#9aa5bd" />
                 <TextInput
                   style={styles.input}
-                  placeholder="user@labcontroll.com"
+                  placeholder="user@email.com"
                   placeholderTextColor="#9aa5bd"
                   keyboardType="email-address"
                   autoCapitalize="none"
                   value={email}
-                  onChangeText={(v) => {
-                    setEmail(v);
-                    clearError();
-                  }}
+                  onChangeText={(v) => { setEmail(v); clearError(); }}
                   editable={!loading}
                 />
               </View>
 
               <Text style={[styles.label, styles.marginTop]}>PASSWORD</Text>
               <View style={styles.inputWrapper}>
-                <Ionicons
-                  name="lock-closed-outline"
-                  size={18}
-                  color="#9aa5bd"
-                />
+                <Ionicons name="lock-closed-outline" size={18} color="#9aa5bd" />
                 <TextInput
                   style={styles.input}
                   placeholder="••••••••"
                   placeholderTextColor="#9aa5bd"
                   secureTextEntry={!showPassword}
                   value={password}
-                  onChangeText={(v) => {
-                    setPassword(v);
-                    clearError();
-                  }}
+                  onChangeText={(v) => { setPassword(v); clearError(); }}
                   editable={!loading}
                 />
                 <Pressable
-                  onPress={() => setShowPassword((prev) => !prev)}
+                  onPress={() => setShowPassword(!showPassword)}
                   style={styles.eyeButton}
                 >
                   <Ionicons
@@ -159,35 +138,24 @@ export default function CreateAccount() {
                 </Pressable>
               </View>
 
-              <Text style={[styles.label, styles.marginTop]}>
-                CONFIRM PASSWORD
-              </Text>
+              <Text style={[styles.label, styles.marginTop]}>CONFIRM PASSWORD</Text>
               <View style={styles.inputWrapper}>
-                <Ionicons
-                  name="lock-closed-outline"
-                  size={18}
-                  color="#9aa5bd"
-                />
+                <Ionicons name="lock-closed-outline" size={18} color="#9aa5bd" />
                 <TextInput
                   style={styles.input}
                   placeholder="••••••••"
                   placeholderTextColor="#9aa5bd"
                   secureTextEntry={!showConfirmPassword}
                   value={confirmPassword}
-                  onChangeText={(v) => {
-                    setConfirmPassword(v);
-                    clearError();
-                  }}
+                  onChangeText={(v) => { setConfirmPassword(v); clearError(); }}
                   editable={!loading}
                 />
                 <Pressable
-                  onPress={() => setShowConfirmPassword((prev) => !prev)}
+                  onPress={() => setShowConfirmPassword(!showConfirmPassword)}
                   style={styles.eyeButton}
                 >
                   <Ionicons
-                    name={
-                      showConfirmPassword ? "eye-outline" : "eye-off-outline"
-                    }
+                    name={showConfirmPassword ? "eye-outline" : "eye-off-outline"}
                     size={20}
                     color="#9aa5bd"
                   />
@@ -205,10 +173,7 @@ export default function CreateAccount() {
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
               <Pressable
-                style={[
-                  styles.createButton,
-                  loading && styles.buttonDisabled,
-                ]}
+                style={[styles.createButton, loading && styles.buttonDisabled]}
                 onPress={handleCreateAccount}
                 disabled={loading}
               >
@@ -285,7 +250,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#f7f9fc",
     borderRadius: 18,
     paddingTop: 30,
-    overflow: "hidden",
     borderWidth: 1,
     borderColor: "#e9eef7",
   },
@@ -298,11 +262,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 18,
-    shadowColor: "#0b1230",
-    shadowOpacity: 0.22,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
   },
   title: {
     fontSize: 21,
@@ -316,11 +275,10 @@ const styles = StyleSheet.create({
     color: "#7082a2",
     textAlign: "center",
     marginBottom: 26,
-    letterSpacing: 0.2,
   },
   form: {
     paddingHorizontal: 28,
-    paddingBottom: 0,
+    paddingBottom: 10,
   },
   label: {
     fontSize: 13,
@@ -379,10 +337,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flexDirection: "row",
     gap: 8,
-    shadowColor: "#0b1230",
-    shadowOpacity: 0.18,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
     elevation: 5,
   },
   buttonDisabled: {
@@ -391,7 +345,7 @@ const styles = StyleSheet.create({
   createButtonText: {
     color: "#f4f7ff",
     fontSize: 15,
-    fontWeight: "500",
+    fontWeight: "600",
   },
   bottomStrip: {
     backgroundColor: "#edf2f8",
