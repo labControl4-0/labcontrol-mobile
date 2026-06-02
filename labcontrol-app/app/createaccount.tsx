@@ -2,6 +2,7 @@ import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
+  ActivityIndicator,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -12,6 +13,8 @@ import {
   View,
 } from "react-native";
 
+import { register } from "../services/authService";
+
 export default function CreateAccount() {
   const router = useRouter();
   const [fullName, setFullName] = useState("");
@@ -20,31 +23,44 @@ export default function CreateAccount() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const handleCreateAccount = () => {
-    // Validações básicas
+  const clearError = () => setError("");
+
+  const handleCreateAccount = async () => {
+    setError("");
+
     if (!fullName.trim()) {
-      alert("Please enter your full name");
+      setError("Por favor, informe seu nome completo.");
       return;
     }
     if (!email.trim()) {
-      alert("Please enter your email");
+      setError("Por favor, informe o e-mail.");
       return;
     }
     if (password.length < 6) {
-      alert("Password must be at least 6 characters");
+      setError("A senha deve ter pelo menos 6 caracteres.");
       return;
     }
     if (password !== confirmPassword) {
-      alert("Passwords do not match");
+      setError("As senhas não coincidem.");
       return;
     }
 
-    // TODO: Implementar lógica de criar conta com API
-    console.log("Create account:", { fullName, email, password });
-
-    // Após sucesso, redirecionar para home ou login
-    router.push("/");
+    setLoading(true);
+    try {
+      await register({ name: fullName.trim(), email: email.trim(), password });
+      router.replace("/");
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Falha ao criar conta. Tente novamente."
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -52,7 +68,6 @@ export default function CreateAccount() {
       <StatusBar barStyle="dark-content" />
       <ScrollView contentContainerStyle={styles.scrollContent} bounces={false}>
         <View style={styles.centeredContainer}>
-          {/* Header com botão voltar */}
           <View style={styles.header}>
             <Pressable onPress={() => router.back()} style={styles.backButton}>
               <Ionicons name="chevron-back" size={24} color="#18233f" />
@@ -61,7 +76,6 @@ export default function CreateAccount() {
             <View style={{ width: 40 }} />
           </View>
 
-          {/* Card de criar conta */}
           <View style={styles.createAccountCard}>
             <View style={styles.logoBox}>
               <Ionicons name="git-network-outline" size={26} color="#1de8df" />
@@ -71,7 +85,6 @@ export default function CreateAccount() {
             <Text style={styles.subtitle}>Join Our Platform</Text>
 
             <View style={styles.form}>
-              {/* Full Name */}
               <Text style={styles.label}>FULL NAME</Text>
               <View style={styles.inputWrapper}>
                 <MaterialIcons
@@ -85,11 +98,14 @@ export default function CreateAccount() {
                   placeholderTextColor="#9aa5bd"
                   autoCapitalize="words"
                   value={fullName}
-                  onChangeText={setFullName}
+                  onChangeText={(v) => {
+                    setFullName(v);
+                    clearError();
+                  }}
+                  editable={!loading}
                 />
               </View>
 
-              {/* Email */}
               <Text style={[styles.label, styles.marginTop]}>EMAIL</Text>
               <View style={styles.inputWrapper}>
                 <MaterialIcons
@@ -104,11 +120,14 @@ export default function CreateAccount() {
                   keyboardType="email-address"
                   autoCapitalize="none"
                   value={email}
-                  onChangeText={setEmail}
+                  onChangeText={(v) => {
+                    setEmail(v);
+                    clearError();
+                  }}
+                  editable={!loading}
                 />
               </View>
 
-              {/* Password */}
               <Text style={[styles.label, styles.marginTop]}>PASSWORD</Text>
               <View style={styles.inputWrapper}>
                 <Ionicons
@@ -122,7 +141,11 @@ export default function CreateAccount() {
                   placeholderTextColor="#9aa5bd"
                   secureTextEntry={!showPassword}
                   value={password}
-                  onChangeText={setPassword}
+                  onChangeText={(v) => {
+                    setPassword(v);
+                    clearError();
+                  }}
+                  editable={!loading}
                 />
                 <Pressable
                   onPress={() => setShowPassword((prev) => !prev)}
@@ -136,7 +159,6 @@ export default function CreateAccount() {
                 </Pressable>
               </View>
 
-              {/* Confirm Password */}
               <Text style={[styles.label, styles.marginTop]}>
                 CONFIRM PASSWORD
               </Text>
@@ -152,7 +174,11 @@ export default function CreateAccount() {
                   placeholderTextColor="#9aa5bd"
                   secureTextEntry={!showConfirmPassword}
                   value={confirmPassword}
-                  onChangeText={setConfirmPassword}
+                  onChangeText={(v) => {
+                    setConfirmPassword(v);
+                    clearError();
+                  }}
+                  editable={!loading}
                 />
                 <Pressable
                   onPress={() => setShowConfirmPassword((prev) => !prev)}
@@ -168,7 +194,6 @@ export default function CreateAccount() {
                 </Pressable>
               </View>
 
-              {/* Terms */}
               <View style={styles.termsContainer}>
                 <Text style={styles.termsText}>
                   By creating an account, you agree to our{" "}
@@ -177,17 +202,27 @@ export default function CreateAccount() {
                 </Text>
               </View>
 
-              {/* Create Account Button */}
+              {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
               <Pressable
-                style={styles.createButton}
+                style={[
+                  styles.createButton,
+                  loading && styles.buttonDisabled,
+                ]}
                 onPress={handleCreateAccount}
+                disabled={loading}
               >
-                <Text style={styles.createButtonText}>Create Account</Text>
-                <Ionicons name="chevron-forward" size={18} color="#18dcd3" />
+                {loading ? (
+                  <ActivityIndicator size="small" color="#18dcd3" />
+                ) : (
+                  <>
+                    <Text style={styles.createButtonText}>Create Account</Text>
+                    <Ionicons name="chevron-forward" size={18} color="#18dcd3" />
+                  </>
+                )}
               </Pressable>
             </View>
 
-            {/* Bottom Strip */}
             <View style={styles.bottomStrip}>
               <Text style={styles.bottomText}>
                 Already have an account?{" "}
@@ -198,7 +233,6 @@ export default function CreateAccount() {
             </View>
           </View>
 
-          {/* Footer */}
           <View style={styles.footer}>
             <Text style={styles.footerSecurity}>End-to-end Encrypted</Text>
             <Text style={styles.footerCopyright}>
@@ -319,7 +353,7 @@ const styles = StyleSheet.create({
   },
   termsContainer: {
     marginTop: 14,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   termsText: {
     color: "#607394",
@@ -331,9 +365,13 @@ const styles = StyleSheet.create({
     color: "#0baea6",
     fontWeight: "700",
   },
+  errorText: {
+    color: "#e05252",
+    fontSize: 13,
+    marginBottom: 10,
+    textAlign: "center",
+  },
   createButton: {
-    marginTop: 0,
-    marginBottom: 0,
     height: 50,
     borderRadius: 8,
     backgroundColor: "#0b1738",
@@ -346,6 +384,9 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
     elevation: 5,
+  },
+  buttonDisabled: {
+    opacity: 0.7,
   },
   createButtonText: {
     color: "#f4f7ff",

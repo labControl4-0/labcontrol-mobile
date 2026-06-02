@@ -2,6 +2,7 @@ import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
+  ActivityIndicator,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -12,11 +13,40 @@ import {
   View,
 } from "react-native";
 
+import { login } from "../services/authService";
+
 export default function Index() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSignIn = async () => {
+    setError("");
+
+    if (!email.trim()) {
+      setError("Por favor, informe o e-mail.");
+      return;
+    }
+    if (!password) {
+      setError("Por favor, informe a senha.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await login({ email: email.trim(), password });
+      router.replace("/(tabs)");
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error ? err.message : "Falha ao entrar. Tente novamente."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -46,7 +76,11 @@ export default function Index() {
                   keyboardType="email-address"
                   autoCapitalize="none"
                   value={email}
-                  onChangeText={setEmail}
+                  onChangeText={(v) => {
+                    setEmail(v);
+                    setError("");
+                  }}
+                  editable={!loading}
                 />
               </View>
 
@@ -63,7 +97,11 @@ export default function Index() {
                   placeholderTextColor="#9aa5bd"
                   secureTextEntry={!showPassword}
                   value={password}
-                  onChangeText={setPassword}
+                  onChangeText={(v) => {
+                    setPassword(v);
+                    setError("");
+                  }}
+                  editable={!loading}
                 />
                 <Pressable
                   onPress={() => setShowPassword((prev) => !prev)}
@@ -84,9 +122,21 @@ export default function Index() {
                 <Text style={styles.forgotText}>Forgot password?</Text>
               </Pressable>
 
-              <Pressable style={styles.signInButton}>
-                <Text style={styles.signInText}>Sign In</Text>
-                <Ionicons name="chevron-forward" size={18} color="#18dcd3" />
+              {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+              <Pressable
+                style={[styles.signInButton, loading && styles.buttonDisabled]}
+                onPress={handleSignIn}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator size="small" color="#18dcd3" />
+                ) : (
+                  <>
+                    <Text style={styles.signInText}>Sign In</Text>
+                    <Ionicons name="chevron-forward" size={18} color="#18dcd3" />
+                  </>
+                )}
               </Pressable>
             </View>
 
@@ -209,8 +259,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
   },
+  errorText: {
+    color: "#e05252",
+    fontSize: 13,
+    marginTop: 10,
+    textAlign: "center",
+  },
   signInButton: {
-    marginTop: 20,
+    marginTop: 16,
     height: 50,
     borderRadius: 8,
     backgroundColor: "#0b1738",
@@ -223,6 +279,9 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
     elevation: 5,
+  },
+  buttonDisabled: {
+    opacity: 0.7,
   },
   signInText: {
     color: "#f4f7ff",
