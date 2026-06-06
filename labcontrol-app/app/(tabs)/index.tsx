@@ -1,33 +1,3 @@
-<<<<<<< HEAD
-import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import { Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
-
-import { clearAuth } from "../../services/tokenStorage";
-
-export default function HomeScreen() {
-  const router = useRouter();
-
-  const handleLogout = async () => {
-    await clearAuth();
-    router.replace("/");
-  };
-
-  return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
-        <View style={styles.logoBox}>
-          <Ionicons name="git-network-outline" size={32} color="#1de8df" />
-        </View>
-        <Text style={styles.title}>LabControll 4.0</Text>
-        <Text style={styles.subtitle}>Você está autenticado</Text>
-
-        <Pressable style={styles.logoutButton} onPress={handleLogout}>
-          <Ionicons name="log-out-outline" size={20} color="#18dcd3" />
-          <Text style={styles.logoutText}>Sair</Text>
-        </Pressable>
-      </View>
-=======
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
@@ -42,8 +12,9 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { login, saveAuthSession } from "../../lib/auth";  
 import Toast from "react-native-toast-message";
+
+import { login, saveAuthSession } from "../../lib/auth";
 
 export default function Index() {
   const router = useRouter();
@@ -54,36 +25,35 @@ export default function Index() {
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-const handleLogin = async () => {
-  if (isSubmitting) return;
+  const handleLogin = async () => {
+    if (isSubmitting) return;
 
-  if (!email.trim() || !password.trim()) {
-    return Alert.alert("Erro", "Preencha todos os campos");
-  }
+    if (!email.trim() || !password.trim()) {
+      return Alert.alert("Erro", "Preencha todos os campos");
+    }
 
-  try {
-    setIsSubmitting(true);
+    try {
+      setIsSubmitting(true);
 
-    const session = await login(email.trim(), password);
+      const session = await login(email.trim(), password);
 
-    await saveAuthSession(session);
+      await saveAuthSession(session);
 
-    Toast.show({
-      type: "success",
-      text1: "Login realizado com sucesso !",
-    });
+      Toast.show({
+        type: "success",
+        text1: "Login realizado com sucesso!",
+      });
 
-    router.replace("/Dashboard");
-
-  } catch (error) {
-    Alert.alert(
-      "Login failed",
-      error instanceof Error ? error.message : "Erro ao logar"
-    );
-  } finally {
-    setIsSubmitting(false);
-  }
-};
+      router.replace("/Dashboard");
+    } catch (error) {
+      Alert.alert(
+        "Login failed",
+        error instanceof Error ? error.message : "Erro ao logar"
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -102,14 +72,15 @@ const handleLogin = async () => {
             </Text>
 
             <View style={styles.form}>
-              {/* EMAIL */}
               <Text style={styles.label}>EMAIL</Text>
+
               <View style={styles.inputWrapper}>
                 <MaterialIcons
                   name="alternate-email"
                   size={20}
                   color="#9aa5bd"
                 />
+
                 <TextInput
                   style={styles.input}
                   placeholder="user@labcontroll.com"
@@ -121,16 +92,15 @@ const handleLogin = async () => {
                 />
               </View>
 
-              {/* PASSWORD */}
-              <Text style={[styles.label, styles.marginTop]}>
-                PASSWORD
-              </Text>
+              <Text style={[styles.label, styles.marginTop]}>PASSWORD</Text>
+
               <View style={styles.inputWrapper}>
                 <Ionicons
                   name="lock-closed-outline"
                   size={18}
                   color="#9aa5bd"
                 />
+
                 <TextInput
                   style={styles.input}
                   placeholder="••••••••"
@@ -152,7 +122,6 @@ const handleLogin = async () => {
                 </Pressable>
               </View>
 
-              {/* FORGOT */}
               <Pressable
                 style={styles.forgotButton}
                 onPress={() => router.push("/ForgotPassword")}
@@ -160,7 +129,6 @@ const handleLogin = async () => {
                 <Text style={styles.forgotText}>Forgot password?</Text>
               </Pressable>
 
-              {/* BUTTON */}
               <Pressable
                 style={[
                   styles.signInButton,
@@ -172,11 +140,11 @@ const handleLogin = async () => {
                 <Text style={styles.signInText}>
                   {isSubmitting ? "Signing In..." : "Sign In"}
                 </Text>
+
                 <Ionicons name="chevron-forward" size={18} color="#18dcd3" />
               </Pressable>
             </View>
 
-            {/* CREATE ACCOUNT */}
             <View style={styles.bottomStrip}>
               <Pressable onPress={() => router.push("/CreateAccount")}>
                 <Text style={styles.bottomText}>
@@ -187,7 +155,6 @@ const handleLogin = async () => {
             </View>
           </View>
 
-          {/* FOOTER */}
           <View style={styles.footer}>
             <Text style={styles.footerSecurity}>End-to-end Encrypted</Text>
             <Text style={styles.footerCopyright}>
@@ -196,54 +163,11 @@ const handleLogin = async () => {
           </View>
         </View>
       </ScrollView>
->>>>>>> origin/develop
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-<<<<<<< HEAD
-  container: {
-    flex: 1,
-    backgroundColor: "#dfe8f4",
-  },
-  content: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 16,
-  },
-  logoBox: {
-    width: 72,
-    height: 72,
-    borderRadius: 18,
-    backgroundColor: "#0c1736",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 8,
-    elevation: 6,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: "800",
-    color: "#18233f",
-  },
-  subtitle: {
-    fontSize: 15,
-    color: "#7082a2",
-  },
-  logoutButton: {
-    marginTop: 24,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    backgroundColor: "#0b1738",
-  },
-  logoutText: {
-=======
   safeArea: {
     flex: 1,
     backgroundColor: "#dfe8f4",
@@ -363,14 +287,10 @@ const styles = StyleSheet.create({
   },
 
   signInText: {
->>>>>>> origin/develop
     color: "#f4f7ff",
     fontSize: 15,
     fontWeight: "600",
   },
-<<<<<<< HEAD
-});
-=======
 
   bottomStrip: {
     backgroundColor: "#edf2f8",
@@ -406,4 +326,3 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
 });
->>>>>>> origin/develop
