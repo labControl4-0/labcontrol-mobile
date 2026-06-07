@@ -46,10 +46,11 @@ export default function Index() {
 
       router.replace("/Dashboard");
     } catch (error) {
-      Alert.alert(
-        "Login failed",
-        error instanceof Error ? error.message : "Erro ao logar"
-      );
+      Toast.show({
+        type: "error",
+        text1: "Erro ao realizar login",
+        text2: error instanceof Error ? error.message : "Erro ao logar",
+      });
     } finally {
       setIsSubmitting(false);
     }
