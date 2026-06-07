@@ -121,16 +121,8 @@ export default function LabsScreen() {
                     />
                   </View>
 
-                  <Text style={styles.cardStatus}>
-                    Escala: {lab.scale}
-                  </Text>
-
                   <Text style={styles.cardDetail}>
                     {lab.description}
-                  </Text>
-
-                  <Text style={styles.cardMeta}>
-                    {lab.widthUnits} x {lab.heightUnits} unidades
                   </Text>
                 </TouchableOpacity>
               ))
