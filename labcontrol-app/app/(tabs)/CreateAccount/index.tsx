@@ -13,7 +13,7 @@ import {
   View,
 } from "react-native";
 
-import { register } from "../../../services/authService";
+import { register } from "../../../lib/auth";
 
 export default function CreateAccount() {
   const router = useRouter();
@@ -50,7 +50,7 @@ export default function CreateAccount() {
 
     setLoading(true);
     try {
-      await register({ name: fullName.trim(), email: email.trim(), password });
+      await register(fullName.trim(), email.trim(), password);
       router.replace("/");
     } catch (err: unknown) {
       setError(

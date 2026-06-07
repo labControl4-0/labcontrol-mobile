@@ -1,7 +1,7 @@
 // lib/users.ts - ATUALIZADO
 import { getAuthSession } from "./auth";
 
-const API_URL = "http://10.0.2.2:8080/api";
+const API_URL = "http://localhost:8080/api";
 
 export async function updateUser(token: string, data: any) {
   const session = await getAuthSession();

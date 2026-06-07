@@ -1,12 +1,12 @@
 import { apiFetch } from "./api";
 
-export type RegisterData = {
+export type CreateUserData = {
   name: string;
   email: string;
   password: string;
 };
 
-export async function register(data: RegisterData) {
+export async function createUser(data: CreateUserData) {
   return apiFetch("/users", {
     method: "POST",
     body: JSON.stringify(data),

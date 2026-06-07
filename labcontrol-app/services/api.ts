@@ -1,38 +1,24 @@
-import axios from "axios";
+export const API_URL = "http://localhost:8080/api";
 
-import { getToken } from "./tokenStorage";
+export async function apiFetch(path: string, options: RequestInit = {}) {
+  const response = await fetch(`${API_URL}${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
+  });
 
-export const API_BASE_URL = "http://localhost:8080";
+  const data = await response.json().catch(() => null);
 
-export const api = axios.create({
-  baseURL: API_BASE_URL,
-  headers: { "Content-Type": "application/json" },
-  timeout: 10000,
-});
-
-api.interceptors.request.use(async (config) => {
-  const token = await getToken();
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+  if (!response.ok) {
+    throw new Error(
+      data?.message ||
+      data?.error ||
+      data?.title ||
+      "Erro na requisição."
+    );
   }
-  return config;
-});
 
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response) {
-      const message =
-        error.response.data?.message ||
-        error.response.data?.title ||
-        "Erro inesperado. Tente novamente.";
-      return Promise.reject(new Error(message));
-    }
-    if (error.request) {
-      return Promise.reject(
-        new Error("Sem conexão com o servidor. Verifique a URL da API.")
-      );
-    }
-    return Promise.reject(error);
-  }
-);
+  return data;
+}
