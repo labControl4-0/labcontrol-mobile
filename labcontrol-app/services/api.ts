@@ -1,34 +1,48 @@
-import { Platform } from "react-native";
-import { getToken } from "./tokenStorage";
+
 import { getAuthToken } from "../lib/auth";
 
-const LOCAL_IP = "192.168.1.6"; // IP do seu computador na rede Wi-Fi
-const IS_EMULATOR = false; // true = emulador Android, false = dispositivo físico
+const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://localhost:8080/api";
 
-export const API_URL =
-  Platform.OS === "web"
-    ? "http://localhost:8080/api"
-    : Platform.OS === "android" && IS_EMULATOR
-    ? "http://10.0.2.2:8080/api"
-    : `http://${LOCAL_IP}:8080/api`;
+console.log("API_URL usada:", API_URL);
 
 export async function apiFetch(path: string, options: RequestInit = {}) {
-  const response = await fetch(`${API_URL}${path}`, {
+  const token = getAuthToken();
+
+  const url = `${API_URL}${path}`;
+
+  console.log("Chamando API:", url);
+
+  const response = await fetch(url, {
     ...options,
     headers: {
       "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options.headers || {}),
     },
   });
 
-  const data = await response.json().catch(() => null);
+  const text = await response.text();
+
+  let data: any = null;
+
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = text;
+  }
 
   if (!response.ok) {
+    console.log("Erro API:", {
+      url,
+      status: response.status,
+      data,
+    });
+
     throw new Error(
       data?.message ||
-      data?.error ||
-      data?.title ||
-      "Erro na requisição."
+        data?.error ||
+        data?.title ||
+        `Erro ${response.status} ao comunicar com o backend.`
     );
   }
 

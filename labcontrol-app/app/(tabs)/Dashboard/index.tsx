@@ -1,49 +1,69 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
+  RefreshControl,
   SafeAreaView,
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
   ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import { Ionicons, Feather } from "@expo/vector-icons";
+import { Feather, Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+
+import {
+  getDashboardData,
+  type DashboardData,
+} from "../../../services/dasbhoardServices";
+
 import { BottomNavBar } from "../../components/BottomNavBar";
-import { getAuthToken, clearAuthSession, getAuthSession } from "../../../lib/auth";
+import { getAuthSession } from "../../../lib/auth";
 
-const statsCards = [
-  {
-    icon: "flash-outline",
-    title: "Total Energy",
-    value: "450",
-    unit: "kW",
-    badge: "+5%",
-  },
-  {
-    icon: "thermometer-outline",
-    title: "Avg Temp",
-    value: "22°",
-    unit: "C",
-    badge: "+1.2%",
-  },
-  {
-    icon: "person-outline",
-    title: "Registered Users",
-    value: "--",
-    unit: "users",
-    badge: "Live",
-  },
-  {
-    icon: "warning-outline",
-    title: "System Alerts",
-    value: "3",
-    unit: "Active",
-    badge: "1 New",
-  },
-];
+type StatCardItem = {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  value: string;
+  unit: string;
+  badge: string;
+};
 
-function StatCard({ item }: any) {
+type MachineMetric = {
+  id?: string;
+  machineId?: string;
+  temperature?: number;
+  temp?: number;
+  energyConsumption?: number;
+  energy?: number;
+  power?: number;
+  value?: number;
+  name?: string;
+  createdAt?: string;
+  timestamp?: string;
+};
+
+function getMetricEnergy(metric: MachineMetric) {
+  return metric.energyConsumption ?? metric.energy ?? metric.power ?? 0;
+}
+
+function getMetricTemperature(metric: MachineMetric) {
+  return metric.temperature ?? metric.temp ?? null;
+}
+
+function calculateBarHeights(values: number[]) {
+  if (values.length === 0) {
+    return [30, 40, 35, 50, 45];
+  }
+
+  const lastValues = values.slice(-5);
+  const maxValue = Math.max(...lastValues, 1);
+
+  return lastValues.map((value) =>
+    Math.max(25, Math.min(110, (value / maxValue) * 110))
+  );
+}
+
+function StatCard({ item }: { item: StatCardItem }) {
   return (
     <View style={styles.card}>
       <View style={styles.cardTop}>
@@ -70,32 +90,109 @@ function StatCard({ item }: any) {
 
 export default function DashboardScreen() {
   const router = useRouter();
-  const [registeredUsers, setRegisteredUsers] = useState<string>("--");
-  const [userName, setUserName] = useState<string>("User");
+
+  const [userName, setUserName] = useState("User");
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(
+    null
+  );
+
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState("");
+
+  async function loadDashboard() {
+    try {
+      setLoading(true);
+      setError("");
+
+      const session = await getAuthSession();
+
+      if (!session) {
+        router.replace("/");
+        return;
+      }
+
+      const sessionName =
+        (session as any)?.user?.name ||
+        (session as any)?.name ||
+        (session as any)?.userName ||
+        "User";
+
+      setUserName(sessionName);
+
+      const data = await getDashboardData();
+
+      console.log("DASHBOARD DATA:", data);
+
+      setDashboardData(data);
+    } catch (err: any) {
+      console.log("ERRO DASHBOARD:", err?.message || err);
+      setError(err?.message || "Erro ao carregar dashboard.");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }
 
   useEffect(() => {
-    const loadDashboard = async () => {
-      try {
-        const session = await getAuthSession();
-
-        if (!session) {
-          router.replace("/");
-          return;
-        }
-
-        setUserName(session.name || "User");
-      } catch (error) {
-        console.error("Failed to load dashboard:", error);
-      }
-    };
-
     loadDashboard();
   }, []);
 
-  const dashboardCards = statsCards.map((card) =>
-    card.title === "Registered Users"
-      ? { ...card, value: registeredUsers }
-      : card
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadDashboard();
+  };
+
+  const totalEnergy = dashboardData?.totalEnergy ?? 0;
+  const avgTemp = dashboardData?.avgTemp ?? 0;
+  const registeredUsers = dashboardData?.registeredUsers ?? 0;
+  const activeAlerts = dashboardData?.activeAlerts ?? 0;
+
+  const metrics = (dashboardData?.metrics ?? []) as MachineMetric[];
+
+  const energyValues = metrics
+    .map(getMetricEnergy)
+    .filter((value) => typeof value === "number" && value > 0);
+
+  const temperatureValues = metrics
+    .map(getMetricTemperature)
+    .filter((value): value is number => typeof value === "number");
+
+  const energyBars = calculateBarHeights(energyValues);
+  const temperatureBars = calculateBarHeights(temperatureValues);
+
+  const dashboardCards = useMemo<StatCardItem[]>(
+    () => [
+      {
+        icon: "flash-outline",
+        title: "Total Energy",
+        value: loading ? "--" : totalEnergy.toFixed(0),
+        unit: "kW",
+        badge: "Live",
+      },
+      {
+        icon: "thermometer-outline",
+        title: "Avg Temp",
+        value: loading ? "--" : avgTemp.toFixed(1),
+        unit: "°C",
+        badge: "Live",
+      },
+      {
+        icon: "person-outline",
+        title: "Registered Users",
+        value: loading ? "--" : String(registeredUsers),
+        unit: "users",
+        badge: "Live",
+      },
+      {
+        icon: "warning-outline",
+        title: "System Alerts",
+        value: loading ? "--" : String(activeAlerts),
+        unit: "Active",
+        badge: activeAlerts > 0 ? "New" : "OK",
+      },
+    ],
+    [loading, totalEnergy, avgTemp, registeredUsers, activeAlerts]
   );
 
   return (
@@ -103,17 +200,29 @@ export default function DashboardScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
       >
         <View style={styles.header}>
           <View style={styles.headerSpacer} />
+
           <Text style={styles.logo}>LabControl 4.0</Text>
+
           <View style={styles.headerRight}>
-            <TouchableOpacity onPress={() => router.push("/(tabs)/Notifications" as any)}>
-              <Ionicons name="notifications-outline" size={20} color="#374151" />
+            <TouchableOpacity
+              onPress={() => router.push("/(tabs)/Notifications" as any)}
+            >
+              <Ionicons
+                name="notifications-outline"
+                size={20}
+                color="#374151"
+              />
             </TouchableOpacity>
+
             <TouchableOpacity
               activeOpacity={0.8}
-              onPress={() => router.push("/UserProfileSettings")}
+              onPress={() => router.push("/UserProfileSettings" as any)}
               style={styles.avatarMini}
             >
               <Text style={styles.avatarLetter}>
@@ -123,8 +232,21 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        <Text style={styles.greeting}>Good morning, {userName}</Text>
+        <Text style={styles.greeting}>Olá, {userName}</Text>
         <Text style={styles.pageTitle}>Facility Overview</Text>
+
+        {loading ? (
+          <View style={styles.loadingBox}>
+            <ActivityIndicator size="small" color="#2563EB" />
+            <Text style={styles.loadingText}>Loading dashboard...</Text>
+          </View>
+        ) : null}
+
+        {error ? (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        ) : null}
 
         <View style={styles.grid}>
           {dashboardCards.map((item, index) => (
@@ -136,13 +258,21 @@ export default function DashboardScreen() {
           <View style={styles.sectionHeader}>
             <View>
               <Text style={styles.sectionTitle}>Energy Trends</Text>
-              <Text style={styles.sectionSubtitle}>Consumption over last 24h</Text>
+              <Text style={styles.sectionSubtitle}>
+                Consumption over last records
+              </Text>
             </View>
+
             <Feather name="more-horizontal" size={18} color="#6B7280" />
           </View>
 
-          <View style={styles.chartArea}>
-            <View style={styles.fakeLine} />
+          <View style={styles.barChartRow}>
+            {energyBars.map((height, index) => (
+              <View key={index} style={styles.barColumn}>
+                <View style={[styles.energyBarTop, { height }]} />
+                <View style={styles.energyBarBottom} />
+              </View>
+            ))}
           </View>
         </View>
 
@@ -152,19 +282,19 @@ export default function DashboardScreen() {
               <Text style={styles.sectionTitle}>Lab Temperature</Text>
               <Text style={styles.sectionSubtitle}>Zone distribution</Text>
             </View>
+
             <Text style={styles.normalText}>● Normal</Text>
           </View>
 
           <View style={styles.barChartRow}>
-            {[60, 85, 40, 90, 70].map((h, i) => (
-              <View key={i} style={styles.barColumn}>
-                <View style={[styles.barTop, { height: h }]} />
+            {temperatureBars.map((height, index) => (
+              <View key={index} style={styles.barColumn}>
+                <View style={[styles.barTop, { height }]} />
                 <View style={styles.barBottom} />
               </View>
             ))}
           </View>
         </View>
-
       </ScrollView>
 
       <BottomNavBar activeTab="dashboard" />
@@ -210,7 +340,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  avatarLetter: { fontSize: 11, fontWeight: "700" },
+  avatarLetter: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
   greeting: {
     fontSize: 12,
     color: "#6B7280",
@@ -220,6 +353,30 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#111827",
     marginBottom: 18,
+  },
+  loadingBox: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  loadingText: {
+    fontSize: 12,
+    color: "#6B7280",
+  },
+  errorBox: {
+    backgroundColor: "#FEE2E2",
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 14,
+  },
+  errorText: {
+    color: "#B91C1C",
+    fontSize: 12,
+    fontWeight: "600",
   },
   grid: {
     flexDirection: "row",
@@ -292,22 +449,12 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 15,
     fontWeight: "700",
+    color: "#111827",
   },
   sectionSubtitle: {
     fontSize: 11,
     color: "#9CA3AF",
     marginTop: 2,
-  },
-  chartArea: {
-    height: 170,
-    justifyContent: "center",
-    marginTop: 14,
-  },
-  fakeLine: {
-    height: 120,
-    borderRadius: 20,
-    borderWidth: 2,
-    borderColor: "#2563EB",
   },
   normalText: {
     fontSize: 11,
@@ -331,6 +478,19 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 6,
   },
   barBottom: {
+    width: 24,
+    height: 20,
+    backgroundColor: "#2563EB",
+    borderBottomLeftRadius: 6,
+    borderBottomRightRadius: 6,
+  },
+  energyBarTop: {
+    width: 24,
+    backgroundColor: "#BFDBFE",
+    borderTopLeftRadius: 6,
+    borderTopRightRadius: 6,
+  },
+  energyBarBottom: {
     width: 24,
     height: 20,
     backgroundColor: "#2563EB",
