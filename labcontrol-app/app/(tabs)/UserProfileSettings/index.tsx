@@ -1,7 +1,5 @@
-// ProfileSettingsScreen.tsx - ATUALIZADO (apenas as partes modificadas)
 import React, { useEffect, useState } from "react";
 import {
-  SafeAreaView,
   View,
   Text,
   StyleSheet,
@@ -12,20 +10,39 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
+  Linking,
+  Platform,
 } from "react-native";
-import { Ionicons, MaterialCommunityIcons, Feather } from "@expo/vector-icons";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons, Feather } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import { BottomNavBar } from "../../components/BottomNavBar";
 import {
-  logout,
   getAuthSession,
   getAuthToken,
   saveAuthSession,
+  clearAuthSession,
 } from "../../../lib/auth";
-import { updateUser, updateUserPhoto } from "../../../lib/users";
+import { clearAuth, getToken, getUser } from "../../../services/tokenStorage";
+import { apiFetchAuth } from "../../../services/api";
+import { updateUserPhoto } from "../../../lib/users";
 import Toast from "react-native-toast-message";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+
+const PROFILE_IMAGE_KEY = "profile_image_uri";
+const WHATSAPP_NUMBER = "5511999422998";
+const WHATSAPP_MESSAGE =
+  "Olá! Estou usando o *LabControl 4.0* — plataforma de monitoramento industrial de laboratórios — e preciso de suporte.\n\n" +
+  "📱 *App:* LabControl Mobile\n" +
+  "🏭 *Função:* Monitoramento de máquinas, setores e labs em tempo real\n" +
+  "🔧 *Recursos:* Blueprint interativo, status de equipamentos, métricas e alertas\n\n" +
+  "Por favor, me ajude com a seguinte situação:";
+
+const appPreferences = [
+  { icon: "bell", label: "Notifications", key: "notifications" },
+  { icon: "help-circle", label: "Help & Support", key: "help" },
+];
 
 const MenuCard = ({ item, onPress }: { item: any; onPress: () => void }) => (
   <TouchableOpacity style={styles.menuCard} onPress={onPress}>
@@ -35,20 +52,6 @@ const MenuCard = ({ item, onPress }: { item: any; onPress: () => void }) => (
   </TouchableOpacity>
 );
 
-const PROFILE_IMAGE_KEY = "profile_image_uri";
-
-const stats = [
-  { value: "0", label: "Credits" },
-  { value: "0", label: "Bookings" },
-  { value: "0", label: "Reviews" },
-];
-
-const appPreferences = [
-  { icon: "bell", label: "Notifications", route: "/Notifications" },
-  { icon: "lock", label: "Privacy", route: "/Privacy" },
-  { icon: "help-circle", label: "Help & Support", route: "/Help" },
-];
-
 export default function ProfileSettingsScreen() {
   const router = useRouter();
 
@@ -57,60 +60,64 @@ export default function ProfileSettingsScreen() {
   const [email, setEmail] = useState("");
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [editModalVisible, setEditModalVisible] = useState(false);
-  const [savingName, setSavingName] = useState(false);    // NOVO
-  const [savingPhoto, setSavingPhoto] = useState(false);  // NOVO
+  const [savingName, setSavingName] = useState(false);
+  const [savingPhoto, setSavingPhoto] = useState(false);
 
   useEffect(() => {
     loadProfile();
   }, []);
 
   const loadProfile = async () => {
-    const session = await getAuthSession();
-
-    if (!session) {
-      router.replace("/");
-      return;
+    // Tenta localStorage (web) primeiro, depois AsyncStorage (mobile)
+    let s: any = getAuthSession();
+    if (!s) {
+      const [token, user] = await Promise.all([getToken(), getUser()]);
+      if (!token && !user) {
+        router.replace("/");
+        return;
+      }
+      s = { ...(user ?? {}), token };
     }
-
-    setProfileName(session.name);
-    setTempName(session.name);
-    setEmail(session.email);
-
-    // NOVO: Carrega foto salva localmente
+    const name = s.user?.name ?? s.name ?? "";
+    const emailVal = s.user?.email ?? s.email ?? "";
+    setProfileName(name);
+    setTempName(name);
+    setEmail(emailVal);
     try {
       const savedImage = await AsyncStorage.getItem(PROFILE_IMAGE_KEY);
       if (savedImage) setProfileImage(savedImage);
     } catch (_) {}
   };
 
-  // CORRIGIDO: Salva nome com loading e feedback adequado
   const handleSaveName = async () => {
     if (!tempName.trim()) {
       Toast.show({ type: "error", text1: "Nome inválido" });
       return;
     }
-
     setSavingName(true);
     try {
-      const token = await getAuthToken();
-      if (!token) {
+      // Tenta localStorage (web) primeiro, depois AsyncStorage (mobile)
+      let session: any = getAuthSession();
+      if (!session) {
+        const user = await getUser();
+        session = user ?? {};
+      }
+      const userId = session?.id ?? session?.user?.id;
+
+      if (!userId) {
         Toast.show({ type: "error", text1: "Sessão expirada, faça login novamente" });
         return;
       }
 
-      await updateUser(token, { name: tempName.trim() });
+      await apiFetchAuth(`/users/${userId}`, {
+        method: "PUT",
+        body: JSON.stringify({ name: tempName.trim() }),
+      });
 
-      const session = await getAuthSession();
-      if (session) {
-        await saveAuthSession({ ...session, name: tempName.trim() });
-      }
-
+      await saveAuthSession({ ...session, name: tempName.trim() } as any);
       setProfileName(tempName.trim());
-      setEditModalVisible(false);
-
       Toast.show({ type: "success", text1: "Nome atualizado com sucesso" });
     } catch (error: any) {
-      console.error("handleSaveName error:", error);
       Toast.show({
         type: "error",
         text1: "Erro ao atualizar nome",
@@ -118,10 +125,10 @@ export default function ProfileSettingsScreen() {
       });
     } finally {
       setSavingName(false);
+      setEditModalVisible(false);
     }
   };
 
-  // CORRIGIDO: Logout com limpeza completa e navegação segura
   const handleLogout = () => {
     Alert.alert("Sair", "Deseja sair da conta?", [
       { text: "Cancelar", style: "cancel" },
@@ -130,75 +137,57 @@ export default function ProfileSettingsScreen() {
         style: "destructive",
         onPress: async () => {
           try {
-            await logout();
-          } catch (_) {
-            // Garante navegação mesmo se logout falhar
-          } finally {
-            // Usa replace para limpar o stack de navegação completamente
+            await clearAuth();
+            clearAuthSession();
+          } catch (_) {}
+          if (Platform.OS === "web") {
+            window.location.replace("/");
+          } else {
             router.replace("/");
-            setTimeout(() => {
-              Toast.show({ type: "success", text1: "Logout realizado com sucesso" });
-            }, 500);
           }
         },
       },
     ]);
   };
 
-  const handleMenuPress = (item: any) => {
-    if (item.route === "/Notifications") {
-      router.push({
-        pathname: "/Notifications",
-        params: { from: "profile" },
-      } as any);
+  const handleMenuPress = (key: string) => {
+    if (key === "notifications") {
+      router.push({ pathname: "/Notifications", params: { from: "profile" } } as any);
+    } else if (key === "help") {
+      const url = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(WHATSAPP_MESSAGE)}`;
+      Linking.openURL(url).catch(() =>
+        Toast.show({ type: "error", text1: "Não foi possível abrir o WhatsApp" })
+      );
     }
   };
 
-  // CORRIGIDO: Persiste foto localmente + tenta enviar à API
   const handleChangePhoto = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
     if (!permission.granted) {
-      Toast.show({
-        type: "error",
-        text1: "Permissão negada",
-        text2: "Permita o acesso à galeria nas configurações",
-      });
+      Toast.show({ type: "error", text1: "Permissão negada", text2: "Permita o acesso à galeria" });
       return;
     }
-
     const result = await ImagePicker.launchImageLibraryAsync({
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.7, // Comprime para upload mais rápido
+      quality: 0.7,
     });
-
     if (result.canceled) return;
-
     const uri = result.assets[0].uri;
-
     setSavingPhoto(true);
     try {
-      // 1. Salva localmente PRIMEIRO (garante UX mesmo se API falhar)
       await AsyncStorage.setItem(PROFILE_IMAGE_KEY, uri);
       setProfileImage(uri);
-
-      // 2. Tenta enviar à API (se sua API suportar upload de foto)
       const token = await getAuthToken();
       if (token) {
         try {
           await updateUserPhoto(token, uri);
           Toast.show({ type: "success", text1: "Foto atualizada!" });
         } catch (_) {
-          // API falhou mas foto foi salva localmente
-          Toast.show({
-            type: "info",
-            text1: "Foto salva localmente",
-            text2: "Não foi possível sincronizar com o servidor",
-          });
+          Toast.show({ type: "info", text1: "Foto salva localmente", text2: "Não foi possível sincronizar com o servidor" });
         }
       }
-    } catch (error) {
+    } catch {
       Toast.show({ type: "error", text1: "Erro ao salvar foto" });
     } finally {
       setSavingPhoto(false);
@@ -208,18 +197,16 @@ export default function ProfileSettingsScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll}>
-        {/* HEADER - sem alteração */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()}>
-            <Ionicons name="arrow-back" size={22} />
+            <Ionicons name="arrow-back" size={22} color="#111827" />
           </TouchableOpacity>
           <Text style={styles.title}>Profile</Text>
           <TouchableOpacity onPress={() => setEditModalVisible(true)}>
-            <Text style={styles.edit}>Edit</Text>
+            <Text style={styles.editLink}>Edit</Text>
           </TouchableOpacity>
         </View>
 
-        {/* PROFILE - avatar com indicador de loading */}
         <View style={styles.profile}>
           <TouchableOpacity onPress={handleChangePhoto} disabled={savingPhoto}>
             {profileImage ? (
@@ -233,33 +220,19 @@ export default function ProfileSettingsScreen() {
                 )}
               </View>
             )}
-            {/* Overlay de loading sobre a foto existente */}
             {savingPhoto && profileImage && (
-              <View style={[styles.avatarPlaceholder, {
-                position: "absolute", backgroundColor: "rgba(0,0,0,0.3)"
-              }]}>
+              <View style={[styles.avatarPlaceholder, styles.avatarOverlay]}>
                 <ActivityIndicator color="#fff" />
               </View>
             )}
           </TouchableOpacity>
-
           <Text style={styles.name}>{profileName}</Text>
           <Text style={styles.email}>{email}</Text>
         </View>
 
-        {/* STATS, MENU, LOGOUT - sem alteração */}
-        <View style={styles.stats}>
-          {stats.map((s, i) => (
-            <View key={i} style={styles.card}>
-              <Text style={styles.value}>{s.value}</Text>
-              <Text style={styles.label}>{s.label}</Text>
-            </View>
-          ))}
-        </View>
-
         <Text style={styles.section}>App Preferences</Text>
-        {appPreferences.map((item, i) => (
-          <MenuCard key={i} item={item} onPress={() => handleMenuPress(item)} />
+        {appPreferences.map((item) => (
+          <MenuCard key={item.key} item={item} onPress={() => handleMenuPress(item.key)} />
         ))}
 
         <TouchableOpacity style={styles.logout} onPress={handleLogout}>
@@ -270,22 +243,16 @@ export default function ProfileSettingsScreen() {
       <BottomNavBar activeTab="profile" />
       <Toast />
 
-      {/* MODAL - botão Save com loading */}
       <Modal visible={editModalVisible} animationType="slide">
         <SafeAreaView style={styles.modal}>
           <View style={styles.modalHeader}>
             <TouchableOpacity
-              onPress={() => {
-                setTempName(profileName); // Reseta ao cancelar
-                setEditModalVisible(false);
-              }}
+              onPress={() => { setTempName(profileName); setEditModalVisible(false); }}
               disabled={savingName}
             >
               <Text style={{ color: savingName ? "#9CA3AF" : "#111827" }}>Cancel</Text>
             </TouchableOpacity>
-
             <Text style={{ fontWeight: "700" }}>Edit Profile</Text>
-
             <TouchableOpacity onPress={handleSaveName} disabled={savingName}>
               {savingName ? (
                 <ActivityIndicator size="small" color="#2563EB" />
@@ -304,9 +271,8 @@ export default function ProfileSettingsScreen() {
               editable={!savingName}
               autoFocus
             />
-
             <View style={styles.infoBox}>
-              <Text>Email</Text>
+              <Text style={{ color: "#6B7280", fontSize: 12, marginBottom: 4 }}>Email</Text>
               <Text>{email}</Text>
             </View>
           </ScrollView>
@@ -317,13 +283,8 @@ export default function ProfileSettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#fff",
-  },
-  scroll: {
-    padding: 20,
-  },
+  container: { flex: 1, backgroundColor: "#fff" },
+  scroll: { padding: 20, paddingBottom: 120 },
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -331,22 +292,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 12,
   },
-  title: {
-    fontSize: 18,
-    fontWeight: "700",
-  },
-  edit: {
-    color: "#2563EB",
-  },
-  profile: {
-    alignItems: "center",
-    marginVertical: 20,
-  },
-  avatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-  },
+  title: { fontSize: 18, fontWeight: "700" },
+  editLink: { color: "#2563EB" },
+  profile: { alignItems: "center", marginVertical: 20 },
+  avatar: { width: 100, height: 100, borderRadius: 50 },
   avatarPlaceholder: {
     width: 100,
     height: 100,
@@ -355,45 +304,13 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "#E5E7EB",
   },
-  name: {
-    marginTop: 10,
-    fontSize: 18,
-    fontWeight: "600",
+  avatarOverlay: {
+    position: "absolute",
+    backgroundColor: "rgba(0,0,0,0.3)",
   },
-  email: {
-    color: "#6B7280",
-  },
-  stats: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginVertical: 10,
-  },
-  card: {
-    alignItems: "center",
-    flex: 1,
-  },
-  value: {
-    fontWeight: "700",
-  },
-  label: {
-    color: "#6B7280",
-  },
-  section: {
-    marginTop: 20,
-    marginBottom: 10,
-    fontWeight: "700",
-  },
-  logout: {
-    marginTop: 20,
-    padding: 12,
-    alignItems: "center",
-    backgroundColor: "#FEE2E2",
-    borderRadius: 8,
-  },
-  logoutText: {
-    color: "#B91C1C",
-    fontWeight: "600",
-  },
+  name: { marginTop: 10, fontSize: 18, fontWeight: "600" },
+  email: { color: "#6B7280" },
+  section: { marginTop: 20, marginBottom: 10, fontWeight: "700" },
   menuCard: {
     flexDirection: "row",
     alignItems: "center",
@@ -401,14 +318,16 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderColor: "#E5E7EB",
   },
-  menuLabel: {
-    flex: 1,
-    marginLeft: 12,
-    fontSize: 16,
+  menuLabel: { flex: 1, marginLeft: 12, fontSize: 16 },
+  logout: {
+    marginTop: 28,
+    padding: 14,
+    alignItems: "center",
+    backgroundColor: "#FEE2E2",
+    borderRadius: 10,
   },
-  modal: {
-    flex: 1,
-  },
+  logoutText: { color: "#B91C1C", fontWeight: "700", fontSize: 15 },
+  modal: { flex: 1 },
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -417,16 +336,13 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderColor: "#E5E7EB",
   },
-  inputLabel: {
-    fontSize: 12,
-    color: "#6B7280",
-    marginBottom: 6,
-  },
+  inputLabel: { fontSize: 12, color: "#6B7280", marginBottom: 6 },
   input: {
     borderWidth: 1,
     borderColor: "#E5E7EB",
     padding: 12,
     borderRadius: 8,
+    fontSize: 15,
   },
   infoBox: {
     marginTop: 20,

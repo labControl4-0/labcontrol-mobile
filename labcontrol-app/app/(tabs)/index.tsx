@@ -15,6 +15,7 @@ import {
 import Toast from "react-native-toast-message";
 
 import { login, saveAuthSession } from "../../lib/auth";
+import { saveToken, saveUser } from "../../services/tokenStorage";
 
 export default function Index() {
   const router = useRouter();
@@ -38,6 +39,14 @@ export default function Index() {
       const session = await login(email.trim(), password);
 
       await saveAuthSession(session);
+
+      // Salva token e dados do usuário no AsyncStorage para funcionar no mobile
+      const s = session as any;
+      const token = s.token ?? s.accessToken;
+      try {
+        if (token) await saveToken(token);
+        if (s.id) await saveUser({ id: s.id, name: s.name ?? "", email: s.email ?? "" });
+      } catch (_) {}
 
       Toast.show({
         type: "success",

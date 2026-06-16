@@ -4,13 +4,14 @@ import { getAuthSession } from "./auth";
 const API_URL = "http://localhost:8080/api";
 
 export async function updateUser(token: string, data: any) {
-  const session = await getAuthSession();
+  const session = await getAuthSession() as any;
+  const userId = session?.user?.id ?? session?.id;
 
-  if (!session?.id) {
+  if (!userId) {
     throw new Error("Usuário não autenticado");
   }
 
-  const response = await fetch(`${API_URL}/users/${session.id}`, {
+  const response = await fetch(`${API_URL}/users/${userId}`, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
@@ -29,9 +30,10 @@ export async function updateUser(token: string, data: any) {
 }
 
 export async function updateUserPhoto(token: string, photoUri: string) {
-  const session = await getAuthSession();
+  const session = await getAuthSession() as any;
+  const userId = session?.user?.id ?? session?.id;
 
-  if (!session?.id) {
+  if (!userId) {
     throw new Error("Usuário não autenticado");
   }
 
@@ -42,7 +44,7 @@ export async function updateUserPhoto(token: string, photoUri: string) {
     name: "profile.jpg",
   } as any);
 
-  const response = await fetch(`${API_URL}/users/${session.id}/photo`, {
+  const response = await fetch(`${API_URL}/users/${userId}/photo`, {
     method: "PUT",
     headers: {
       Authorization: `Bearer ${token}`,
