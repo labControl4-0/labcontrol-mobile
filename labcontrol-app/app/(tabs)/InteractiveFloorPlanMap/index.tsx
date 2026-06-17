@@ -18,7 +18,7 @@ import { getAuthSession } from "../../../lib/auth";
 import type { Plant, Sector, SectorPoint, Machine, MachineStatus, BBox } from "../../../types/blueprint";
 
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
-const API_BASE      = "http://localhost:8080/api";
+const API_BASE      = "http://ec2-3-222-252-59.compute-1.amazonaws.com/api";
 const CANVAS_PADDING = 48;
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
