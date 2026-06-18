@@ -4,7 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 
 interface BottomNavBarProps {
-  activeTab?: "dashboard" | "devices" | "labs" | "notifications" | "profile";
+  activeTab?: "dashboard" | "devices" | "chat" | "notifications" | "profile";
 }
 
 export function BottomNavBar({ activeTab = "dashboard" }: BottomNavBarProps) {
@@ -13,8 +13,8 @@ export function BottomNavBar({ activeTab = "dashboard" }: BottomNavBarProps) {
   const tabs = [
     { id: "dashboard", icon: "grid", route: "/Dashboard" },
     { id: "devices", icon: "map-outline", route: "/Devices" },
+    { id: "chat", icon: "chatbubble-ellipses-outline", route: "/Chat" },
     { id: "notifications", icon: "notifications-outline", route: "/Notifications" },
-    { id: "labs", icon: "flash-outline", route: "/Labs" },
     { id: "profile", icon: "person-outline", route: "/UserProfileSettings" },
   ];
 
