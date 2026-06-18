@@ -1,3 +1,10 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+const SESSION_KEY = "@labcontrol:session";
+const TOKEN_KEY = "@labcontrol:token";
+
+
+
 const API_URL = "http://ec2-3-222-252-59.compute-1.amazonaws.com/api";
 
 export type AuthSession = {
@@ -72,17 +79,20 @@ export async function register(
 }
 
 export async function saveAuthSession(session: AuthSession) {
-  localStorage.setItem("labcontrol_session", JSON.stringify(session));
+  await AsyncStorage.setItem(
+    SESSION_KEY,
+    JSON.stringify(session)
+  );
 
   const token = session.token || session.accessToken;
 
   if (token) {
-    localStorage.setItem("labcontrol_token", token);
+    await AsyncStorage.setItem(TOKEN_KEY, token);
   }
 }
 
-export function getAuthSession(): AuthSession | null {
-  const session = localStorage.getItem("labcontrol_session");
+export async function getAuthSession(): Promise<AuthSession | null> {
+  const session = await AsyncStorage.getItem(SESSION_KEY);
 
   if (!session) {
     return null;
@@ -91,11 +101,13 @@ export function getAuthSession(): AuthSession | null {
   return JSON.parse(session);
 }
 
-export function getAuthToken(): string | null {
-  return localStorage.getItem("labcontrol_token");
+export async function getAuthToken(): Promise<string | null> {
+  return await AsyncStorage.getItem(TOKEN_KEY);
 }
 
-export function clearAuthSession() {
-  localStorage.removeItem("labcontrol_session");
-  localStorage.removeItem("labcontrol_token");
+export async function clearAuthSession() {
+  await AsyncStorage.multiRemove([
+    SESSION_KEY,
+    TOKEN_KEY,
+  ]);
 }
