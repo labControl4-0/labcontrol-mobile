@@ -16,7 +16,7 @@ import {
   getDashboardData,
   type DashboardData,
 } from "../../../services/dasbhoardServices";
-
+import { mockDashboardData } from "../../../services/mockDashboard";
 import { BottomNavBar } from "../../components/BottomNavBar";
 import { getAuthSession } from "../../../lib/auth";
 
@@ -120,11 +120,8 @@ export default function DashboardScreen() {
 
       setUserName(sessionName);
 
-      const data = await getDashboardData();
+      setDashboardData(mockDashboardData as DashboardData);
 
-      console.log("DASHBOARD DATA:", data);
-
-      setDashboardData(data);
     } catch (err: any) {
       console.log("ERRO DASHBOARD:", err?.message || err);
       setError(err?.message || "Erro ao carregar dashboard.");
