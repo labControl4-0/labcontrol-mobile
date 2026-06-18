@@ -50,17 +50,54 @@ function getMetricTemperature(metric: MachineMetric) {
   return metric.temperature ?? metric.temp ?? null;
 }
 
-function calculateBarHeights(values: number[]) {
-  if (values.length === 0) {
-    return [30, 40, 35, 50, 45];
-  }
+type BarItem = {
+  height: number;
+  value: number;
+  label: string;
+  formattedValue: string;
+  colorTop: string;
+  colorBottom: string;
+};
 
-  const lastValues = values.slice(-5);
-  const maxValue = Math.max(...lastValues, 1);
+function energyColor(ratio: number): { top: string; bottom: string } {
+  if (ratio <= 0.33) return { top: "#BBF7D0", bottom: "#16A34A" }; // verde — baixo
+  if (ratio <= 0.66) return { top: "#BFDBFE", bottom: "#2563EB" }; // azul — médio
+  return { top: "#FECACA", bottom: "#DC2626" };                     // vermelho — alto
+}
 
-  return lastValues.map((value) =>
-    Math.max(25, Math.min(110, (value / maxValue) * 110))
-  );
+function tempColor(celsius: number): { top: string; bottom: string } {
+  if (celsius < 25) return { top: "#BAE6FD", bottom: "#0284C7" };  // azul — frio
+  if (celsius < 28) return { top: "#BBF7D0", bottom: "#16A34A" };  // verde — normal
+  if (celsius < 31) return { top: "#FDE68A", bottom: "#D97706" };  // amarelo — quente
+  return { top: "#FECACA", bottom: "#DC2626" };                     // vermelho — crítico
+}
+
+function buildBarData(
+  metrics: MachineMetric[],
+  getValue: (m: MachineMetric) => number | null,
+  format: (v: number) => string,
+  getColor: (value: number, ratio: number) => { top: string; bottom: string }
+): BarItem[] {
+  const slice = metrics.slice(-5);
+  const fallback = [120, 180, 240, 320, 210];
+  const source = slice.length > 0 ? slice : null;
+  const values = source
+    ? source.map((m) => getValue(m) ?? 0)
+    : fallback;
+  const maxValue = Math.max(...values, 1);
+
+  return values.map((v, i) => {
+    const ratio = v / maxValue;
+    const color = getColor(v, ratio);
+    return {
+      height: Math.max(25, Math.min(100, ratio * 100)),
+      value: v,
+      label: source ? (source[i].machineId ?? `M0${i + 1}`) : `M0${i + 1}`,
+      formattedValue: format(v),
+      colorTop: color.top,
+      colorBottom: color.bottom,
+    };
+  });
 }
 
 function StatCard({ item }: { item: StatCardItem }) {
@@ -155,8 +192,18 @@ export default function DashboardScreen() {
     .map(getMetricTemperature)
     .filter((value): value is number => typeof value === "number");
 
-  const energyBars = calculateBarHeights(energyValues);
-  const temperatureBars = calculateBarHeights(temperatureValues);
+  const energyBars = buildBarData(
+    metrics,
+    getMetricEnergy,
+    (v) => `${v}W`,
+    (_v, ratio) => energyColor(ratio)
+  );
+  const temperatureBars = buildBarData(
+    metrics,
+    getMetricTemperature,
+    (v) => `${v}°`,
+    (v, _ratio) => tempColor(v)
+  );
 
   const dashboardCards = useMemo<StatCardItem[]>(
     () => [
@@ -256,18 +303,30 @@ export default function DashboardScreen() {
             <View>
               <Text style={styles.sectionTitle}>Energy Trends</Text>
               <Text style={styles.sectionSubtitle}>
-                Consumption over last records
+                Consumo por máquina (kW)
               </Text>
             </View>
-
-            <Feather name="more-horizontal" size={18} color="#6B7280" />
+            <View style={styles.legendRow}>
+              <View style={[styles.legendDot, { backgroundColor: "#2563EB" }]} />
+              <Text style={styles.legendText}>Consumo</Text>
+            </View>
           </View>
 
-          <View style={styles.barChartRow}>
-            {energyBars.map((height, index) => (
+          <View style={styles.barChartArea}>
+            {energyBars.map((bar, index) => (
               <View key={index} style={styles.barColumn}>
-                <View style={[styles.energyBarTop, { height }]} />
-                <View style={styles.energyBarBottom} />
+                <Text style={[styles.barValueLabel, { color: bar.colorBottom }]}>
+                  {bar.formattedValue}
+                </Text>
+                <View style={styles.barTrack}>
+                  <View
+                    style={[
+                      styles.barFill,
+                      { height: `${bar.height}%` as any, backgroundColor: bar.colorBottom },
+                    ]}
+                  />
+                </View>
+                <Text style={styles.barXLabel}>{bar.label}</Text>
               </View>
             ))}
           </View>
@@ -277,17 +336,31 @@ export default function DashboardScreen() {
           <View style={styles.sectionHeader}>
             <View>
               <Text style={styles.sectionTitle}>Lab Temperature</Text>
-              <Text style={styles.sectionSubtitle}>Zone distribution</Text>
+              <Text style={styles.sectionSubtitle}>Temperatura por zona (°C)</Text>
             </View>
-
-            <Text style={styles.normalText}>● Normal</Text>
+            <View style={styles.legendRow}>
+              <View style={[styles.legendDot, { backgroundColor: "#16A34A" }]} />
+              <Text style={styles.legendText}>Normal</Text>
+              <View style={[styles.legendDot, { backgroundColor: "#DC2626", marginLeft: 6 }]} />
+              <Text style={styles.legendText}>Crítico</Text>
+            </View>
           </View>
 
-          <View style={styles.barChartRow}>
-            {temperatureBars.map((height, index) => (
+          <View style={styles.barChartArea}>
+            {temperatureBars.map((bar, index) => (
               <View key={index} style={styles.barColumn}>
-                <View style={[styles.barTop, { height }]} />
-                <View style={styles.barBottom} />
+                <Text style={[styles.barValueLabel, { color: bar.colorBottom }]}>
+                  {bar.formattedValue}
+                </Text>
+                <View style={styles.barTrack}>
+                  <View
+                    style={[
+                      styles.barFill,
+                      { height: `${bar.height}%` as any, backgroundColor: bar.colorBottom },
+                    ]}
+                  />
+                </View>
+                <Text style={styles.barXLabel}>{bar.label}</Text>
               </View>
             ))}
           </View>
@@ -464,9 +537,58 @@ const styles = StyleSheet.create({
     marginTop: 20,
     height: 140,
   },
+  barChartArea: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+    marginTop: 16,
+  },
   barColumn: {
-    width: 26,
+    flex: 1,
     alignItems: "center",
+    maxWidth: 46,
+  },
+  barValueLabel: {
+    fontSize: 9,
+    fontWeight: "700",
+    color: "#374151",
+    marginBottom: 6,
+  },
+  barTrack: {
+    width: 28,
+    height: 110,
+    backgroundColor: "#E5E7EB",
+    borderRadius: 10,
+    justifyContent: "flex-end",
+    overflow: "hidden",
+  },
+  barFill: {
+    width: "100%",
+    borderRadius: 10,
+    minHeight: 8,
+  },
+  barBody: {
+    alignItems: "center",
+  },
+  barXLabel: {
+    fontSize: 9,
+    color: "#9CA3AF",
+    marginTop: 6,
+    fontWeight: "600",
+  },
+  legendRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  legendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  legendText: {
+    fontSize: 11,
+    color: "#6B7280",
   },
   barTop: {
     width: 24,
