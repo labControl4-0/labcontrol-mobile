@@ -4,7 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 
 interface BottomNavBarProps {
-  activeTab?: "dashboard" | "devices" | "chat" | "notifications" | "profile";
+  activeTab?: "dashboard" | "devices" | "labs" | "chat" | "notifications" | "profile";
 }
 
 export function BottomNavBar({ activeTab = "dashboard" }: BottomNavBarProps) {
@@ -13,6 +13,7 @@ export function BottomNavBar({ activeTab = "dashboard" }: BottomNavBarProps) {
   const tabs = [
     { id: "dashboard", icon: "grid", route: "/Dashboard" },
     { id: "devices", icon: "map-outline", route: "/Devices" },
+    { id: "labs", icon: "flash-outline", route: "/Labs" },
     { id: "chat", icon: "chatbubble-ellipses-outline", route: "/Chat" },
     { id: "notifications", icon: "notifications-outline", route: "/Notifications" },
     { id: "profile", icon: "person-outline", route: "/UserProfileSettings" },
@@ -30,7 +31,7 @@ export function BottomNavBar({ activeTab = "dashboard" }: BottomNavBarProps) {
           >
             <Ionicons
               name={tab.icon as any}
-              size={20}
+              size={18}
               color={isActive ? "#2563EB" : "#9CA3AF"}
             />
           </TouchableOpacity>
@@ -48,7 +49,7 @@ const styles = StyleSheet.create({
     bottom: 16,
     backgroundColor: "#fff",
     borderRadius: 24,
-    paddingVertical: 14,
+    paddingVertical: 11,
     flexDirection: "row",
     justifyContent: "space-around",
     alignItems: "center",
