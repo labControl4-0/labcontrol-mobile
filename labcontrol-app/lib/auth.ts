@@ -1,12 +1,31 @@
 // Armazenamento único da sessão. Todo o app lê e grava a sessão por aqui.
 // Chamadas HTTP de login/registro ficam em services/authService.ts.
+// Ver docs/POLITICA_DE_DADOS.md.
+//
+// - Token: armazenamento seguro (lib/secureStorage.ts). Nunca no AsyncStorage.
+// - Perfil (id, nome, e-mail): AsyncStorage, sem o token.
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const SESSION_KEY = "@labcontrol:session";
+import { secretStore } from "./secureStorage";
+import { clearAllUserCaches, clearOtherUsersCaches } from "./userCache";
 
-// Chaves usadas por versões anteriores (lib/auth.ts e tokenStorage.ts).
-// Só são removidas no logout, para não deixar token antigo no aparelho.
-const LEGACY_KEYS = ["@labcontrol:token", "@labcontrol:user"];
+const TOKEN_KEY = "labcontrol.auth.token";
+const PROFILE_KEY = "@labcontrol:profile";
+
+// Chaves de versões anteriores. "@labcontrol:session" e "@labcontrol:token"
+// guardavam o token no AsyncStorage; "profile_image_uri" não era separada por
+// usuário. São apagadas ao gravar ou encerrar a sessão e na abertura do app.
+export const LEGACY_KEYS = [
+  "@labcontrol:session",
+  "@labcontrol:token",
+  "@labcontrol:user",
+  "profile_image_uri",
+];
+
+/** Remove dados de versões anteriores. Chamado na abertura do app. */
+export async function purgeLegacyStorage(): Promise<void> {
+  await AsyncStorage.multiRemove(LEGACY_KEYS);
+}
 
 export type AuthUser = {
   id?: string;
@@ -37,11 +56,8 @@ function normalizeSession(raw: unknown): AuthSession | null {
 
   if (typeof token !== "string" || token.length === 0) return null;
 
-  const user: AuthUser = payload.user ?? {
-    id: payload.id,
-    name: payload.name,
-    email: payload.email,
-  };
+  const source = payload.user ?? payload;
+  const user: AuthUser = { id: source.id, name: source.name, email: source.email };
 
   return { token, user };
 }
@@ -53,23 +69,42 @@ export async function saveAuthSession(payload: AuthPayload): Promise<AuthSession
     throw new Error("Resposta de autenticação sem token.");
   }
 
-  await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  await secretStore.setItem(TOKEN_KEY, session.token);
+  await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify({ user: session.user }));
+  await AsyncStorage.multiRemove(LEGACY_KEYS);
+
+  // Troca de usuário: o cache de outra conta não pode continuar no aparelho.
+  if (session.user.id) await clearOtherUsersCaches(session.user.id);
+  else await clearAllUserCaches();
 
   return session;
 }
 
 export async function getAuthSession(): Promise<AuthSession | null> {
-  const stored = await AsyncStorage.getItem(SESSION_KEY);
+  const [token, storedProfile] = await Promise.all([
+    secretStore.getItem(TOKEN_KEY),
+    AsyncStorage.getItem(PROFILE_KEY),
+  ]);
 
-  if (!stored) return null;
+  if (!token && !storedProfile) return null;
+
+  let user: AuthUser | null = null;
 
   try {
-    return normalizeSession(JSON.parse(stored));
+    const parsed = storedProfile ? JSON.parse(storedProfile) : null;
+    if (parsed && typeof parsed.user === "object" && parsed.user) user = parsed.user;
   } catch {
-    // Valor corrompido: descarta para o usuário voltar ao login.
+    user = null;
+  }
+
+  // Sessão incompleta (ex.: aba web fechada apaga o token, mas o perfil fica)
+  // ou corrompida: descarta tudo e o usuário volta ao login.
+  if (!token || !user) {
     await clearAuthSession();
     return null;
   }
+
+  return { token, user };
 }
 
 /** Token já resolvido (string) ou null. Nunca retorna Promise pendente para o chamador. */
@@ -78,6 +113,11 @@ export async function getAuthToken(): Promise<string | null> {
   return session?.token ?? null;
 }
 
+/** Logout e sessão expirada: apaga token, perfil, cache por usuário e chaves legadas. */
 export async function clearAuthSession(): Promise<void> {
-  await AsyncStorage.multiRemove([SESSION_KEY, ...LEGACY_KEYS]);
+  await Promise.all([
+    secretStore.removeItem(TOKEN_KEY),
+    AsyncStorage.multiRemove([PROFILE_KEY, ...LEGACY_KEYS]),
+    clearAllUserCaches(),
+  ]);
 }

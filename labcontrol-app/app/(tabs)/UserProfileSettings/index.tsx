@@ -26,9 +26,16 @@ import {
 import { ApiError, apiFetch } from "../../../services/api";
 import { updateUserPhoto } from "../../../lib/users";
 import Toast from "react-native-toast-message";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { userCache } from "../../../lib/userCache";
 
-const PROFILE_IMAGE_KEY = "profile_image_uri";
+// Foto de perfil fica no cache do próprio usuário (ver docs/POLITICA_DE_DADOS.md).
+const PROFILE_IMAGE_KEY = "profileImageUri";
+const PROFILE_IMAGE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+async function getCurrentUserCache() {
+  const session = await getAuthSession();
+  return session?.user.id ? userCache(session.user.id) : null;
+}
 const WHATSAPP_NUMBER = "5511999422998";
 
 const WHATSAPP_MESSAGE =
@@ -82,8 +89,9 @@ export default function ProfileSettingsScreen() {
     setEmail(emailVal);
 
     try {
-      const savedImage = await AsyncStorage.getItem(PROFILE_IMAGE_KEY);
-      if (savedImage) setProfileImage(savedImage);
+      const cache = s.user.id ? userCache(s.user.id) : null;
+      const savedImage = await cache?.get<string>(PROFILE_IMAGE_KEY);
+      setProfileImage(savedImage ?? null);
     } catch (_) {}
   };
 
@@ -218,7 +226,8 @@ export default function ProfileSettingsScreen() {
     setSavingPhoto(true);
 
     try {
-      await AsyncStorage.setItem(PROFILE_IMAGE_KEY, uri);
+      const cache = await getCurrentUserCache();
+      await cache?.set(PROFILE_IMAGE_KEY, uri, PROFILE_IMAGE_TTL_MS);
       setProfileImage(uri);
 
       try {
