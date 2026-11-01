@@ -20,12 +20,10 @@ import { useRouter } from "expo-router";
 import { BottomNavBar } from "../../components/BottomNavBar";
 import {
   getAuthSession,
-  getAuthToken,
   saveAuthSession,
   clearAuthSession,
 } from "../../../lib/auth";
-import { clearAuth, getToken, getUser } from "../../../services/tokenStorage";
-import { apiFetchAuth } from "../../../services/api";
+import { ApiError, apiFetch } from "../../../services/api";
 import { updateUserPhoto } from "../../../lib/users";
 import Toast from "react-native-toast-message";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -69,19 +67,15 @@ export default function ProfileSettingsScreen() {
   }, []);
 
   const loadProfile = async () => {
-    let s: any = await getAuthSession();
+    const s = await getAuthSession();
 
     if (!s) {
-      const [token, user] = await Promise.all([getToken(), getUser()]);
-      if (!token && !user) {
-        router.replace("/");
-        return;
-      }
-      s = { ...(user ?? {}), token };
+      router.replace("/");
+      return;
     }
 
-    const name = s.user?.name ?? s.name ?? "";
-    const emailVal = s.user?.email ?? s.email ?? "";
+    const name = s.user.name ?? "";
+    const emailVal = s.user.email ?? "";
 
     setProfileName(name);
     setTempName(name);
@@ -121,7 +115,7 @@ export default function ProfileSettingsScreen() {
       password: "",
     };
 
-    await apiFetchAuth(`/users/${userId}`, {
+    await apiFetch(`/users/${userId}`, {
       method: "PUT",
       body: JSON.stringify(payload),
     });
@@ -166,8 +160,7 @@ export default function ProfileSettingsScreen() {
         text: "Sair",
         style: "destructive",
         onPress: async () => {
-          await clearAuth();
-          clearAuthSession();
+          await clearAuthSession();
 
           if (Platform.OS === "web") {
             window.location.replace("/");
@@ -228,13 +221,12 @@ export default function ProfileSettingsScreen() {
       await AsyncStorage.setItem(PROFILE_IMAGE_KEY, uri);
       setProfileImage(uri);
 
-      const token = await getAuthToken();
-
-      if (token) {
-        try {
-          await updateUserPhoto(token, uri);
-          Toast.show({ type: "success", text1: "Foto atualizada!" });
-        } catch {
+      try {
+        await updateUserPhoto(uri);
+        Toast.show({ type: "success", text1: "Foto atualizada!" });
+      } catch (error) {
+        // Em 401 a sessão já foi limpa e o app volta ao login; não mostra aviso extra.
+        if (!(error instanceof ApiError && error.code === "unauthorized")) {
           Toast.show({
             type: "info",
             text1: "Foto salva localmente",

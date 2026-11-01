@@ -1,41 +1,28 @@
-// lib/users.ts - ATUALIZADO
 import { getAuthSession } from "./auth";
+import { apiFetch } from "../services/api";
 
-const API_URL = "http://ec2-3-222-252-59.compute-1.amazonaws.com/api";
-
-export async function updateUser(token: string, data: any) {
-  const session = await getAuthSession() as any;
-  const userId = session?.user?.id ?? session?.id;
+async function requireUserId(): Promise<string> {
+  const session = await getAuthSession();
+  const userId = session?.user.id;
 
   if (!userId) {
     throw new Error("Usuário não autenticado");
   }
 
-  const response = await fetch(`${API_URL}/users/${userId}`, {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    console.log("Erro API:", text);
-    throw new Error("Erro ao atualizar usuário");
-  }
-
-  return response.json();
+  return userId;
 }
 
-export async function updateUserPhoto(token: string, photoUri: string) {
-  const session = await getAuthSession() as any;
-  const userId = session?.user?.id ?? session?.id;
+export async function updateUser(data: unknown) {
+  const userId = await requireUserId();
 
-  if (!userId) {
-    throw new Error("Usuário não autenticado");
-  }
+  return apiFetch(`/users/${userId}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateUserPhoto(photoUri: string) {
+  const userId = await requireUserId();
 
   const formData = new FormData();
   formData.append("photo", {
@@ -44,20 +31,8 @@ export async function updateUserPhoto(token: string, photoUri: string) {
     name: "profile.jpg",
   } as any);
 
-  const response = await fetch(`${API_URL}/users/${userId}/photo`, {
+  return apiFetch(`/users/${userId}/photo`, {
     method: "PUT",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "multipart/form-data",
-    },
     body: formData,
   });
-
-  if (!response.ok) {
-    const text = await response.text();
-    console.log("Erro upload foto:", text);
-    throw new Error("Erro ao atualizar foto");
-  }
-
-  return response.json();
 }

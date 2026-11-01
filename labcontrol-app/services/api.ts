@@ -1,62 +1,213 @@
+import { clearAuthSession, getAuthToken } from "../lib/auth";
+import { getApiTimeoutMs, getApiUrl } from "../lib/config";
 
-import { getAuthToken } from "../lib/auth";
+export type ApiErrorCode =
+  | "config"
+  | "network"
+  | "timeout"
+  | "unauthorized"
+  | "http";
 
-const API_URL = "http://ec2-3-222-252-59.compute-1.amazonaws.com/api";
+/** Erro padrão de todas as requisições. `message` é sempre seguro para exibir ao usuário. */
+export class ApiError extends Error {
+  code: ApiErrorCode;
+  status?: number;
+  data?: unknown;
 
-console.log("API_URL usada:", API_URL);
+  constructor(
+    message: string,
+    code: ApiErrorCode,
+    status?: number,
+    data?: unknown
+  ) {
+    super(message);
+    Object.setPrototypeOf(this, ApiError.prototype);
+    this.name = "ApiError";
+    this.code = code;
+    this.status = status;
+    this.data = data;
+  }
+}
 
-export async function apiFetch(path: string, options: RequestInit = {}) {
-  const token = getAuthToken();
+export type ApiRequestOptions = RequestInit & {
+  /** Não envia token nem trata 401 como sessão expirada (ex.: login e cadastro). */
+  skipAuth?: boolean;
+  /** Sobrescreve o timeout padrão, em milissegundos. */
+  timeoutMs?: number;
+};
 
-  const url = `${API_URL}${path}`;
+type UnauthorizedHandler = () => void;
 
-  console.log("Chamando API:", url);
+let unauthorizedHandler: UnauthorizedHandler | null = null;
+let unauthorizedInFlight: Promise<void> | null = null;
 
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options.headers || {}),
-    },
+/**
+ * Registra o que fazer quando a sessão expira (401): normalmente navegar para o login.
+ * É chamado depois que a sessão local já foi limpa.
+ */
+export function setUnauthorizedHandler(handler: UnauthorizedHandler | null) {
+  unauthorizedHandler = handler;
+}
+
+async function handleUnauthorized(tokenSent: string | null): Promise<void> {
+  // Várias requisições paralelas podem receber 401 juntas: trata uma vez só.
+  if (unauthorizedInFlight) return unauthorizedInFlight;
+
+  unauthorizedInFlight = (async () => {
+    // Se a sessão mudou enquanto a requisição estava em voo (novo login),
+    // o 401 é de uma sessão antiga e não deve derrubar a atual.
+    const currentToken = await getAuthToken();
+    if (currentToken !== tokenSent) return;
+
+    await clearAuthSession();
+
+    try {
+      unauthorizedHandler?.();
+    } catch {
+      // Falha ao navegar não pode mascarar o erro 401 original.
+    }
+  })().finally(() => {
+    unauthorizedInFlight = null;
   });
 
-  const text = await response.text();
+  return unauthorizedInFlight;
+}
 
-  let data: any = null;
+function parseBody(text: string): any {
+  if (!text) return null;
 
   try {
-    data = text ? JSON.parse(text) : null;
+    return JSON.parse(text);
   } catch {
-    data = text;
+    return text;
+  }
+}
+
+function extractServerMessage(data: any): string | null {
+  if (data && typeof data === "object") {
+    for (const field of ["message", "error", "title"]) {
+      if (typeof data[field] === "string" && data[field]) return data[field];
+    }
+    return null;
   }
 
-  if (!response.ok) {
-    console.log("Erro API:", {
-      url,
-      status: response.status,
-      data,
-    });
+  if (typeof data === "string" && data.length > 0 && data.length <= 200) {
+    return data;
+  }
 
-    throw new Error(
-      data?.message ||
-        data?.error ||
-        data?.title ||
-        `Erro ${response.status} ao comunicar com o backend.`
+  return null;
+}
+
+function buildHttpError(status: number, data: any, skipAuth: boolean): ApiError {
+  if (status === 401) {
+    const message = skipAuth
+      ? extractServerMessage(data) ?? "E-mail ou senha inválidos."
+      : "Sessão expirada. Faça login novamente.";
+
+    return new ApiError(message, "unauthorized", status, data);
+  }
+
+  return new ApiError(
+    extractServerMessage(data) ??
+      `Erro ${status} ao comunicar com o backend.`,
+    "http",
+    status,
+    data
+  );
+}
+
+export async function apiFetch(
+  path: string,
+  options: ApiRequestOptions = {}
+): Promise<any> {
+  const {
+    skipAuth = false,
+    timeoutMs = getApiTimeoutMs(),
+    signal: callerSignal,
+    headers: rawHeaders,
+    ...init
+  } = options;
+
+  const baseUrl = getApiUrl();
+
+  if (!baseUrl) {
+    throw new ApiError(
+      "API não configurada. Defina EXPO_PUBLIC_API_URL no arquivo .env.",
+      "config"
     );
   }
 
-  return data;
-}
+  const url = `${baseUrl}${path.startsWith("/") ? path : `/${path}`}`;
 
-export async function apiFetchAuth(path: string, options: RequestInit = {}) {
-  // AsyncStorage (mobile) first, then localStorage (web)
-  const token = (await getToken()) ?? getAuthToken();
-  return apiFetch(path, {
-    ...options,
-    headers: {
-      ...(options.headers || {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  });
+  // O token é resolvido aqui, antes de montar o header: o header recebe uma string.
+  const token = skipAuth ? null : await getAuthToken();
+
+  const headers = new Headers(rawHeaders);
+
+  if (!headers.has("Accept")) headers.set("Accept", "application/json");
+
+  const isFormData =
+    typeof FormData !== "undefined" && init.body instanceof FormData;
+
+  // Em FormData o fetch define o Content-Type com o boundary correto.
+  if (init.body != null && !isFormData && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  if (token && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  const controller = new AbortController();
+  let timedOut = false;
+
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+
+  const abortFromCaller = () => controller.abort();
+
+  if (callerSignal) {
+    if (callerSignal.aborted) controller.abort();
+    else callerSignal.addEventListener("abort", abortFromCaller);
+  }
+
+  let response: Response;
+  let text: string;
+
+  try {
+    response = await fetch(url, { ...init, headers, signal: controller.signal });
+    text = await response.text();
+  } catch (error) {
+    if (timedOut) {
+      throw new ApiError(
+        "O servidor demorou para responder. Tente novamente.",
+        "timeout"
+      );
+    }
+
+    // Cancelamento feito por quem chamou não é erro de rede.
+    if (callerSignal?.aborted) throw error;
+
+    throw new ApiError(
+      "Não foi possível conectar ao servidor. Verifique sua conexão.",
+      "network"
+    );
+  } finally {
+    clearTimeout(timer);
+    callerSignal?.removeEventListener("abort", abortFromCaller);
+  }
+
+  const data = parseBody(text);
+
+  if (!response.ok) {
+    if (response.status === 401 && !skipAuth) {
+      await handleUnauthorized(token);
+    }
+
+    throw buildHttpError(response.status, data, skipAuth);
+  }
+
+  return data;
 }

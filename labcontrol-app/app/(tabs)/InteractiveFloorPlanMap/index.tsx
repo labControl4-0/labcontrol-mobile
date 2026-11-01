@@ -14,11 +14,10 @@ import Svg, { Polygon, Circle, G, Rect } from "react-native-svg";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
-import { getAuthSession } from "../../../lib/auth";
+import { apiFetch } from "../../../services/api";
 import type { Plant, Sector, SectorPoint, Machine, MachineStatus, BBox } from "../../../types/blueprint";
 
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
-const API_BASE      = "http://ec2-3-222-252-59.compute-1.amazonaws.com/api";
 const CANVAS_PADDING = 48;
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
@@ -53,31 +52,17 @@ const STATUS_LABEL: Record<MachineStatus, string> = {
 };
 
 // ─── API ──────────────────────────────────────────────────────────────────────
-async function buildHeaders(): Promise<Record<string, string>> {
-  const session = await getAuthSession();
-  return {
-    accept:        "text/plain",
-    Authorization: `Bearer ${session!.token}`,
-  };
-}
-
 async function fetchPlant(id: string): Promise<Plant> {
-  const res = await fetch(`${API_BASE}/plants/${id}`, { headers: await buildHeaders() });
-  if (!res.ok) throw new Error(`Erro ao buscar planta (${res.status})`);
-  return res.json();
+  return apiFetch(`/plants/${id}`);
 }
 
 async function fetchSectors(plantId: string): Promise<Sector[]> {
-  const res = await fetch(`${API_BASE}/sectors/plant/${plantId}`, { headers: await buildHeaders() });
-  if (!res.ok) throw new Error(`Erro ao buscar setores (${res.status})`);
-  const raw: Omit<Sector, "points">[] = await res.json();
+  const raw: Omit<Sector, "points">[] = await apiFetch(`/sectors/plant/${plantId}`);
   return raw.map((s) => ({ ...s, points: JSON.parse(s.pointsJson) as SectorPoint[] }));
 }
 
 async function fetchMachines(plantId: string): Promise<Machine[]> {
-  const res = await fetch(`${API_BASE}/machines/plant/${plantId}`, { headers: await buildHeaders() });
-  if (!res.ok) throw new Error(`Erro ao buscar máquinas (${res.status})`);
-  return res.json();
+  return apiFetch(`/machines/plant/${plantId}`);
 }
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
