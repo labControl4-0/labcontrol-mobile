@@ -14,7 +14,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { BottomNavBar } from "../../components/BottomNavBar";
-import { apiFetchAuth } from "../../../services/api";
+import { apiFetch } from "../../../services/api";
 
 type Role = "user" | "bot";
 
@@ -68,7 +68,7 @@ export default function ChatScreen() {
     setLoading(true);
 
     try {
-      const data = await apiFetchAuth("/chat", {
+      const data = await apiFetch("/chat", {
         method: "POST",
         body: JSON.stringify({ message: trimmed }),
       });

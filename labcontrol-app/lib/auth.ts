@@ -1,113 +1,123 @@
+// Armazenamento único da sessão. Todo o app lê e grava a sessão por aqui.
+// Chamadas HTTP de login/registro ficam em services/authService.ts.
+// Ver docs/POLITICA_DE_DADOS.md.
+//
+// - Token: armazenamento seguro (lib/secureStorage.ts). Nunca no AsyncStorage.
+// - Perfil (id, nome, e-mail): AsyncStorage, sem o token.
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const SESSION_KEY = "@labcontrol:session";
-const TOKEN_KEY = "@labcontrol:token";
+import { secretStore } from "./secureStorage";
+import { clearAllUserCaches, clearOtherUsersCaches } from "./userCache";
 
+const TOKEN_KEY = "labcontrol.auth.token";
+const PROFILE_KEY = "@labcontrol:profile";
 
+// Chaves de versões anteriores. "@labcontrol:session" e "@labcontrol:token"
+// guardavam o token no AsyncStorage; "profile_image_uri" não era separada por
+// usuário. São apagadas ao gravar ou encerrar a sessão e na abertura do app.
+export const LEGACY_KEYS = [
+  "@labcontrol:session",
+  "@labcontrol:token",
+  "@labcontrol:user",
+  "profile_image_uri",
+];
 
-const API_URL = "http://ec2-3-222-252-59.compute-1.amazonaws.com/api";
+/** Remove dados de versões anteriores. Chamado na abertura do app. */
+export async function purgeLegacyStorage(): Promise<void> {
+  await AsyncStorage.multiRemove(LEGACY_KEYS);
+}
 
-export type AuthSession = {
-  token?: string;
-  accessToken?: string;
-  user?: {
-    id?: string;
-    name?: string;
-    email?: string;
-  };
+export type AuthUser = {
+  id?: string;
+  name?: string;
+  email?: string;
 };
 
-export async function login(
-  email: string,
-  password: string
-): Promise<AuthSession> {
-  const response = await fetch(`${API_URL}/Auth/login`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      email,
-      password,
-    }),
-  });
+export type AuthSession = {
+  token: string;
+  user: AuthUser;
+};
 
-  const data = await response.json().catch(() => null);
+/** Formatos aceitos na entrada: resposta plana do backend ou sessão já aninhada. */
+export type AuthPayload = {
+  token?: string;
+  accessToken?: string;
+  user?: AuthUser;
+  id?: string;
+  name?: string;
+  email?: string;
+};
 
-  if (!response.ok) {
-    throw new Error(
-      data?.message ||
-      data?.error ||
-      data?.title ||
-      "E-mail ou senha inválidos."
-    );
-  }
+function normalizeSession(raw: unknown): AuthSession | null {
+  if (!raw || typeof raw !== "object") return null;
 
-  return data;
+  const payload = raw as AuthPayload;
+  const token = payload.token ?? payload.accessToken;
+
+  if (typeof token !== "string" || token.length === 0) return null;
+
+  const source = payload.user ?? payload;
+  const user: AuthUser = { id: source.id, name: source.name, email: source.email };
+
+  return { token, user };
 }
 
-export async function register(
-  name: string,
-  email: string,
-  password: string
-): Promise<AuthSession> {
-  const response = await fetch(`${API_URL}/Auth/register`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      name,
-      email,
-      password,
-    }),
-  });
+export async function saveAuthSession(payload: AuthPayload): Promise<AuthSession> {
+  const session = normalizeSession(payload);
 
-  const data = await response.json().catch(() => null);
-
-  if (!response.ok) {
-    throw new Error(
-      data?.message ||
-      data?.error ||
-      data?.title ||
-      data ||
-      "Erro ao criar conta."
-    );
+  if (!session) {
+    throw new Error("Resposta de autenticação sem token.");
   }
 
-  return data;
-}
+  await secretStore.setItem(TOKEN_KEY, session.token);
+  await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify({ user: session.user }));
+  await AsyncStorage.multiRemove(LEGACY_KEYS);
 
-export async function saveAuthSession(session: AuthSession) {
-  await AsyncStorage.setItem(
-    SESSION_KEY,
-    JSON.stringify(session)
-  );
+  // Troca de usuário: o cache de outra conta não pode continuar no aparelho.
+  if (session.user.id) await clearOtherUsersCaches(session.user.id);
+  else await clearAllUserCaches();
 
-  const token = session.token || session.accessToken;
-
-  if (token) {
-    await AsyncStorage.setItem(TOKEN_KEY, token);
-  }
+  return session;
 }
 
 export async function getAuthSession(): Promise<AuthSession | null> {
-  const session = await AsyncStorage.getItem(SESSION_KEY);
+  const [token, storedProfile] = await Promise.all([
+    secretStore.getItem(TOKEN_KEY),
+    AsyncStorage.getItem(PROFILE_KEY),
+  ]);
 
-  if (!session) {
+  if (!token && !storedProfile) return null;
+
+  let user: AuthUser | null = null;
+
+  try {
+    const parsed = storedProfile ? JSON.parse(storedProfile) : null;
+    if (parsed && typeof parsed.user === "object" && parsed.user) user = parsed.user;
+  } catch {
+    user = null;
+  }
+
+  // Sessão incompleta (ex.: aba web fechada apaga o token, mas o perfil fica)
+  // ou corrompida: descarta tudo e o usuário volta ao login.
+  if (!token || !user) {
+    await clearAuthSession();
     return null;
   }
 
-  return JSON.parse(session);
+  return { token, user };
 }
 
+/** Token já resolvido (string) ou null. Nunca retorna Promise pendente para o chamador. */
 export async function getAuthToken(): Promise<string | null> {
-  return await AsyncStorage.getItem(TOKEN_KEY);
+  const session = await getAuthSession();
+  return session?.token ?? null;
 }
 
-export async function clearAuthSession() {
-  await AsyncStorage.multiRemove([
-    SESSION_KEY,
-    TOKEN_KEY,
+/** Logout e sessão expirada: apaga token, perfil, cache por usuário e chaves legadas. */
+export async function clearAuthSession(): Promise<void> {
+  await Promise.all([
+    secretStore.removeItem(TOKEN_KEY),
+    AsyncStorage.multiRemove([PROFILE_KEY, ...LEGACY_KEYS]),
+    clearAllUserCaches(),
   ]);
 }

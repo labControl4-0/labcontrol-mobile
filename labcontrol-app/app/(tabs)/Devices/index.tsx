@@ -11,7 +11,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { BottomNavBar } from "../../components/BottomNavBar";
-import { getToken } from "../../../services/tokenStorage";
+import { ApiError, apiFetch } from "../../../services/api";
 
 type MachineStatus = "active" | "warning" | "error" | "idle";
 
@@ -37,8 +37,6 @@ type PlantGroup = {
   plant: Plant;
   machines: Machine[];
 };
-
-const API_URL = "http://ec2-3-222-252-59.compute-1.amazonaws.com/api";
 
 const STATUS_LABEL: Record<MachineStatus, string> = {
   active: "Ativo",
@@ -98,60 +96,14 @@ export default function MachinesScreen() {
       setLoading(true);
       setError(null);
 
-      const token = await getToken();
-
-      if (!token) {
-        setError("Usuário não autenticado.");
-        return;
-      }
-
-      console.log("TOKEN:", token);
-
-      const plantsResponse = await fetch(`${API_URL}/plants`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/json",
-        },
-      });
-
-      if (!plantsResponse.ok) {
-        throw new Error(
-          `Erro ao buscar labs (${plantsResponse.status})`
-        );
-      }
-
-      const plants: Plant[] = await plantsResponse.json();
-
-      console.log("PLANTS:", plants);
+      const plants: Plant[] = await apiFetch("/plants");
 
       const groupsData = await Promise.all(
         plants.map(async (plant) => {
           try {
-            const machinesResponse = await fetch(
-              `${API_URL}/machines/plant/${plant.id}`,
-              {
-                method: "GET",
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                  Accept: "application/json",
-                },
-              }
+            const machines: Machine[] = await apiFetch(
+              `/machines/plant/${plant.id}`
             );
-
-            if (!machinesResponse.ok) {
-              console.warn(
-                `Erro ao buscar máquinas do lab ${plant.name}`
-              );
-
-              return {
-                plant,
-                machines: [],
-              };
-            }
-
-            const machines: Machine[] =
-              await machinesResponse.json();
 
             return {
               plant,
@@ -171,19 +123,12 @@ export default function MachinesScreen() {
         })
       );
 
-      console.log("GROUPS:", groupsData);
-
       setGroups(groupsData);
-    } catch (err: any) {
-      console.error("Erro:", err);
-
-      const isOffline =
-        err?.message?.includes("Network") ||
-        err?.message?.includes("fetch");
-
+    } catch (err) {
+      // Em 401 o api.ts já limpou a sessão e redirecionou para o login.
       setError(
-        isOffline
-          ? "Servidor indisponível. Verifique sua conexão."
+        err instanceof ApiError
+          ? err.message
           : "Não foi possível carregar as máquinas."
       );
     } finally {
