@@ -1,49 +1,106 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
+  RefreshControl,
   SafeAreaView,
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
   ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import { Ionicons, Feather } from "@expo/vector-icons";
+import { Feather, Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+
+import {
+  getDashboardData,
+  type DashboardData,
+} from "../../../services/dasbhoardServices";
+import { mockDashboardData } from "../../../services/mockDashboard";
 import { BottomNavBar } from "../../components/BottomNavBar";
-import { getAuthToken, clearAuthSession, getAuthSession } from "../../../lib/auth";
+import { getAuthSession } from "../../../lib/auth";
 
-const statsCards = [
-  {
-    icon: "flash-outline",
-    title: "Total Energy",
-    value: "450",
-    unit: "kW",
-    badge: "+5%",
-  },
-  {
-    icon: "thermometer-outline",
-    title: "Avg Temp",
-    value: "22°",
-    unit: "C",
-    badge: "+1.2%",
-  },
-  {
-    icon: "person-outline",
-    title: "Registered Users",
-    value: "--",
-    unit: "users",
-    badge: "Live",
-  },
-  {
-    icon: "warning-outline",
-    title: "System Alerts",
-    value: "3",
-    unit: "Active",
-    badge: "1 New",
-  },
-];
+type StatCardItem = {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  value: string;
+  unit: string;
+  badge: string;
+};
 
-function StatCard({ item }: any) {
+type MachineMetric = {
+  id?: string;
+  machineId?: string;
+  temperature?: number;
+  temp?: number;
+  energyConsumption?: number;
+  energy?: number;
+  power?: number;
+  value?: number;
+  name?: string;
+  createdAt?: string;
+  timestamp?: string;
+};
+
+function getMetricEnergy(metric: MachineMetric) {
+  return metric.energyConsumption ?? metric.energy ?? metric.power ?? 0;
+}
+
+function getMetricTemperature(metric: MachineMetric) {
+  return metric.temperature ?? metric.temp ?? null;
+}
+
+type BarItem = {
+  height: number;
+  value: number;
+  label: string;
+  formattedValue: string;
+  colorTop: string;
+  colorBottom: string;
+};
+
+function energyColor(ratio: number): { top: string; bottom: string } {
+  if (ratio <= 0.33) return { top: "#BBF7D0", bottom: "#16A34A" }; // verde — baixo
+  if (ratio <= 0.66) return { top: "#BFDBFE", bottom: "#2563EB" }; // azul — médio
+  return { top: "#FECACA", bottom: "#DC2626" };                     // vermelho — alto
+}
+
+function tempColor(celsius: number): { top: string; bottom: string } {
+  if (celsius < 25) return { top: "#BAE6FD", bottom: "#0284C7" };  // azul — frio
+  if (celsius < 28) return { top: "#BBF7D0", bottom: "#16A34A" };  // verde — normal
+  if (celsius < 31) return { top: "#FDE68A", bottom: "#D97706" };  // amarelo — quente
+  return { top: "#FECACA", bottom: "#DC2626" };                     // vermelho — crítico
+}
+
+function buildBarData(
+  metrics: MachineMetric[],
+  getValue: (m: MachineMetric) => number | null,
+  format: (v: number) => string,
+  getColor: (value: number, ratio: number) => { top: string; bottom: string }
+): BarItem[] {
+  const slice = metrics.slice(-5);
+  const fallback = [120, 180, 240, 320, 210];
+  const source = slice.length > 0 ? slice : null;
+  const values = source
+    ? source.map((m) => getValue(m) ?? 0)
+    : fallback;
+  const maxValue = Math.max(...values, 1);
+
+  return values.map((v, i) => {
+    const ratio = v / maxValue;
+    const color = getColor(v, ratio);
+    return {
+      height: Math.max(25, Math.min(100, ratio * 100)),
+      value: v,
+      label: source ? (source[i].machineId ?? `M0${i + 1}`) : `M0${i + 1}`,
+      formattedValue: format(v),
+      colorTop: color.top,
+      colorBottom: color.bottom,
+    };
+  });
+}
+
+function StatCard({ item }: { item: StatCardItem }) {
   return (
     <View style={styles.card}>
       <View style={styles.cardTop}>
@@ -70,32 +127,116 @@ function StatCard({ item }: any) {
 
 export default function DashboardScreen() {
   const router = useRouter();
-  const [registeredUsers, setRegisteredUsers] = useState<string>("--");
-  const [userName, setUserName] = useState<string>("User");
+
+  const [userName, setUserName] = useState("User");
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(
+    null
+  );
+
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState("");
+
+  async function loadDashboard() {
+    try {
+      setLoading(true);
+      setError("");
+
+      const session = await getAuthSession();
+
+      if (!session) {
+        router.replace("/");
+        return;
+      }
+
+      const sessionName =
+        (session as any)?.user?.name ||
+        (session as any)?.name ||
+        (session as any)?.userName ||
+        "User";
+
+      setUserName(sessionName);
+
+      setDashboardData(mockDashboardData as DashboardData);
+
+    } catch (err: any) {
+      console.log("ERRO DASHBOARD:", err?.message || err);
+      setError(err?.message || "Erro ao carregar dashboard.");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }
 
   useEffect(() => {
-    const loadDashboard = async () => {
-      try {
-        const session = await getAuthSession();
-
-        if (!session) {
-          router.replace("/");
-          return;
-        }
-
-        setUserName(session.name || "User");
-      } catch (error) {
-        console.error("Failed to load dashboard:", error);
-      }
-    };
-
     loadDashboard();
   }, []);
 
-  const dashboardCards = statsCards.map((card) =>
-    card.title === "Registered Users"
-      ? { ...card, value: registeredUsers }
-      : card
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadDashboard();
+  };
+
+  const totalEnergy = dashboardData?.totalEnergy ?? 0;
+  const avgTemp = dashboardData?.avgTemp ?? 0;
+  const registeredUsers = dashboardData?.registeredUsers ?? 0;
+  const activeAlerts = dashboardData?.activeAlerts ?? 0;
+
+  const metrics = (dashboardData?.metrics ?? []) as MachineMetric[];
+
+  const energyValues = metrics
+    .map(getMetricEnergy)
+    .filter((value) => typeof value === "number" && value > 0);
+
+  const temperatureValues = metrics
+    .map(getMetricTemperature)
+    .filter((value): value is number => typeof value === "number");
+
+  const energyBars = buildBarData(
+    metrics,
+    getMetricEnergy,
+    (v) => `${v}W`,
+    (_v, ratio) => energyColor(ratio)
+  );
+  const temperatureBars = buildBarData(
+    metrics,
+    getMetricTemperature,
+    (v) => `${v}°`,
+    (v, _ratio) => tempColor(v)
+  );
+
+  const dashboardCards = useMemo<StatCardItem[]>(
+    () => [
+      {
+        icon: "flash-outline",
+        title: "Total Energy",
+        value: loading ? "--" : totalEnergy.toFixed(0),
+        unit: "kW",
+        badge: "Live",
+      },
+      {
+        icon: "thermometer-outline",
+        title: "Avg Temp",
+        value: loading ? "--" : avgTemp.toFixed(1),
+        unit: "°C",
+        badge: "Live",
+      },
+      {
+        icon: "person-outline",
+        title: "Registered Users",
+        value: loading ? "--" : String(registeredUsers),
+        unit: "users",
+        badge: "Live",
+      },
+      {
+        icon: "warning-outline",
+        title: "System Alerts",
+        value: loading ? "--" : String(activeAlerts),
+        unit: "Active",
+        badge: activeAlerts > 0 ? "New" : "OK",
+      },
+    ],
+    [loading, totalEnergy, avgTemp, registeredUsers, activeAlerts]
   );
 
   return (
@@ -103,17 +244,29 @@ export default function DashboardScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
       >
         <View style={styles.header}>
           <View style={styles.headerSpacer} />
+
           <Text style={styles.logo}>LabControl 4.0</Text>
+
           <View style={styles.headerRight}>
-            <TouchableOpacity onPress={() => router.push("/(tabs)/Notifications" as any)}>
-              <Ionicons name="notifications-outline" size={20} color="#374151" />
+            <TouchableOpacity
+              onPress={() => router.push("/(tabs)/Notifications" as any)}
+            >
+              <Ionicons
+                name="notifications-outline"
+                size={20}
+                color="#374151"
+              />
             </TouchableOpacity>
+
             <TouchableOpacity
               activeOpacity={0.8}
-              onPress={() => router.push("/UserProfileSettings")}
+              onPress={() => router.push("/UserProfileSettings" as any)}
               style={styles.avatarMini}
             >
               <Text style={styles.avatarLetter}>
@@ -123,8 +276,21 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        <Text style={styles.greeting}>Good morning, {userName}</Text>
+        <Text style={styles.greeting}>Olá, {userName}</Text>
         <Text style={styles.pageTitle}>Facility Overview</Text>
+
+        {loading ? (
+          <View style={styles.loadingBox}>
+            <ActivityIndicator size="small" color="#2563EB" />
+            <Text style={styles.loadingText}>Loading dashboard...</Text>
+          </View>
+        ) : null}
+
+        {error ? (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        ) : null}
 
         <View style={styles.grid}>
           {dashboardCards.map((item, index) => (
@@ -136,13 +302,33 @@ export default function DashboardScreen() {
           <View style={styles.sectionHeader}>
             <View>
               <Text style={styles.sectionTitle}>Energy Trends</Text>
-              <Text style={styles.sectionSubtitle}>Consumption over last 24h</Text>
+              <Text style={styles.sectionSubtitle}>
+                Consumo por máquina (kW)
+              </Text>
             </View>
-            <Feather name="more-horizontal" size={18} color="#6B7280" />
+            <View style={styles.legendRow}>
+              <View style={[styles.legendDot, { backgroundColor: "#2563EB" }]} />
+              <Text style={styles.legendText}>Consumo</Text>
+            </View>
           </View>
 
-          <View style={styles.chartArea}>
-            <View style={styles.fakeLine} />
+          <View style={styles.barChartArea}>
+            {energyBars.map((bar, index) => (
+              <View key={index} style={styles.barColumn}>
+                <Text style={[styles.barValueLabel, { color: bar.colorBottom }]}>
+                  {bar.formattedValue}
+                </Text>
+                <View style={styles.barTrack}>
+                  <View
+                    style={[
+                      styles.barFill,
+                      { height: `${bar.height}%` as any, backgroundColor: bar.colorBottom },
+                    ]}
+                  />
+                </View>
+                <Text style={styles.barXLabel}>{bar.label}</Text>
+              </View>
+            ))}
           </View>
         </View>
 
@@ -150,21 +336,35 @@ export default function DashboardScreen() {
           <View style={styles.sectionHeader}>
             <View>
               <Text style={styles.sectionTitle}>Lab Temperature</Text>
-              <Text style={styles.sectionSubtitle}>Zone distribution</Text>
+              <Text style={styles.sectionSubtitle}>Temperatura por zona (°C)</Text>
             </View>
-            <Text style={styles.normalText}>● Normal</Text>
+            <View style={styles.legendRow}>
+              <View style={[styles.legendDot, { backgroundColor: "#16A34A" }]} />
+              <Text style={styles.legendText}>Normal</Text>
+              <View style={[styles.legendDot, { backgroundColor: "#DC2626", marginLeft: 6 }]} />
+              <Text style={styles.legendText}>Crítico</Text>
+            </View>
           </View>
 
-          <View style={styles.barChartRow}>
-            {[60, 85, 40, 90, 70].map((h, i) => (
-              <View key={i} style={styles.barColumn}>
-                <View style={[styles.barTop, { height: h }]} />
-                <View style={styles.barBottom} />
+          <View style={styles.barChartArea}>
+            {temperatureBars.map((bar, index) => (
+              <View key={index} style={styles.barColumn}>
+                <Text style={[styles.barValueLabel, { color: bar.colorBottom }]}>
+                  {bar.formattedValue}
+                </Text>
+                <View style={styles.barTrack}>
+                  <View
+                    style={[
+                      styles.barFill,
+                      { height: `${bar.height}%` as any, backgroundColor: bar.colorBottom },
+                    ]}
+                  />
+                </View>
+                <Text style={styles.barXLabel}>{bar.label}</Text>
               </View>
             ))}
           </View>
         </View>
-
       </ScrollView>
 
       <BottomNavBar activeTab="dashboard" />
@@ -210,7 +410,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  avatarLetter: { fontSize: 11, fontWeight: "700" },
+  avatarLetter: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
   greeting: {
     fontSize: 12,
     color: "#6B7280",
@@ -220,6 +423,30 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#111827",
     marginBottom: 18,
+  },
+  loadingBox: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  loadingText: {
+    fontSize: 12,
+    color: "#6B7280",
+  },
+  errorBox: {
+    backgroundColor: "#FEE2E2",
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 14,
+  },
+  errorText: {
+    color: "#B91C1C",
+    fontSize: 12,
+    fontWeight: "600",
   },
   grid: {
     flexDirection: "row",
@@ -292,22 +519,12 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 15,
     fontWeight: "700",
+    color: "#111827",
   },
   sectionSubtitle: {
     fontSize: 11,
     color: "#9CA3AF",
     marginTop: 2,
-  },
-  chartArea: {
-    height: 170,
-    justifyContent: "center",
-    marginTop: 14,
-  },
-  fakeLine: {
-    height: 120,
-    borderRadius: 20,
-    borderWidth: 2,
-    borderColor: "#2563EB",
   },
   normalText: {
     fontSize: 11,
@@ -320,9 +537,58 @@ const styles = StyleSheet.create({
     marginTop: 20,
     height: 140,
   },
+  barChartArea: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+    marginTop: 16,
+  },
   barColumn: {
-    width: 26,
+    flex: 1,
     alignItems: "center",
+    maxWidth: 46,
+  },
+  barValueLabel: {
+    fontSize: 9,
+    fontWeight: "700",
+    color: "#374151",
+    marginBottom: 6,
+  },
+  barTrack: {
+    width: 28,
+    height: 110,
+    backgroundColor: "#E5E7EB",
+    borderRadius: 10,
+    justifyContent: "flex-end",
+    overflow: "hidden",
+  },
+  barFill: {
+    width: "100%",
+    borderRadius: 10,
+    minHeight: 8,
+  },
+  barBody: {
+    alignItems: "center",
+  },
+  barXLabel: {
+    fontSize: 9,
+    color: "#9CA3AF",
+    marginTop: 6,
+    fontWeight: "600",
+  },
+  legendRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  legendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  legendText: {
+    fontSize: 11,
+    color: "#6B7280",
   },
   barTop: {
     width: 24,
@@ -331,6 +597,19 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 6,
   },
   barBottom: {
+    width: 24,
+    height: 20,
+    backgroundColor: "#2563EB",
+    borderBottomLeftRadius: 6,
+    borderBottomRightRadius: 6,
+  },
+  energyBarTop: {
+    width: 24,
+    backgroundColor: "#BFDBFE",
+    borderTopLeftRadius: 6,
+    borderTopRightRadius: 6,
+  },
+  energyBarBottom: {
     width: 24,
     height: 20,
     backgroundColor: "#2563EB",

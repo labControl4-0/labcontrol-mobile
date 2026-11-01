@@ -1,96 +1,83 @@
+// Armazenamento único da sessão. Todo o app lê e grava a sessão por aqui.
+// Chamadas HTTP de login/registro ficam em services/authService.ts.
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const API_URL = "http://localhost:8080/api";
+const SESSION_KEY = "@labcontrol:session";
 
-export type AuthResponse = {
-  id: string;
-  name: string;
-  email: string;
-  token: string; 
+// Chaves usadas por versões anteriores (lib/auth.ts e tokenStorage.ts).
+// Só são removidas no logout, para não deixar token antigo no aparelho.
+const LEGACY_KEYS = ["@labcontrol:token", "@labcontrol:user"];
+
+export type AuthUser = {
+  id?: string;
+  name?: string;
+  email?: string;
 };
 
-// 🔥 request base
-async function apiRequest<T>(endpoint: string, options: RequestInit): Promise<T> {
-  const response = await fetch(`${API_URL}${endpoint}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
-    ...options,
-  });
+export type AuthSession = {
+  token: string;
+  user: AuthUser;
+};
 
-  if (!response.ok) {
-    let message = "Erro na requisição";
+/** Formatos aceitos na entrada: resposta plana do backend ou sessão já aninhada. */
+export type AuthPayload = {
+  token?: string;
+  accessToken?: string;
+  user?: AuthUser;
+  id?: string;
+  name?: string;
+  email?: string;
+};
 
-    try {
-      const errorData = await response.json();
-      message = errorData.message || errorData.title || message;
-    } catch {
-      message = await response.text();
-    }
+function normalizeSession(raw: unknown): AuthSession | null {
+  if (!raw || typeof raw !== "object") return null;
 
-    throw new Error(message);
+  const payload = raw as AuthPayload;
+  const token = payload.token ?? payload.accessToken;
+
+  if (typeof token !== "string" || token.length === 0) return null;
+
+  const user: AuthUser = payload.user ?? {
+    id: payload.id,
+    name: payload.name,
+    email: payload.email,
+  };
+
+  return { token, user };
+}
+
+export async function saveAuthSession(payload: AuthPayload): Promise<AuthSession> {
+  const session = normalizeSession(payload);
+
+  if (!session) {
+    throw new Error("Resposta de autenticação sem token.");
   }
 
-  return response.json();
+  await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(session));
+
+  return session;
 }
 
-// REGISTER
-export async function registerUser(
-  name: string,
-  email: string,
-  password: string
-): Promise<AuthResponse> {
-  return apiRequest<AuthResponse>("/Auth/register", {
-    method: "POST",
-    body: JSON.stringify({ name, email, password }),
-  });
-}
-//ATUALIZAR DADOS DO USUÁRIO NA SESSÃO
-export async function updateAuthSession(data: Partial<AuthResponse>) {
-  const current = await getAuthSession();
+export async function getAuthSession(): Promise<AuthSession | null> {
+  const stored = await AsyncStorage.getItem(SESSION_KEY);
 
-  if (!current) return;
+  if (!stored) return null;
 
-  const updated = { ...current, ...data };
-
-  await AsyncStorage.setItem("user", JSON.stringify(updated));
+  try {
+    return normalizeSession(JSON.parse(stored));
+  } catch {
+    // Valor corrompido: descarta para o usuário voltar ao login.
+    await clearAuthSession();
+    return null;
+  }
 }
 
-// LOGIN
-export async function login(
-  email: string,
-  password: string
-): Promise<AuthResponse> {
-  return apiRequest<AuthResponse>("/Auth/login", {
-    method: "POST",
-    body: JSON.stringify({ email, password }),
-  });
-}
-
-// SALVAR SESSÃO
-export async function saveAuthSession(session: AuthResponse) {
-  await AsyncStorage.setItem("user", JSON.stringify(session));
-  await AsyncStorage.setItem("auth_token", session.token);
-}
-
-// PEGAR USER
-export async function getAuthSession(): Promise<AuthResponse | null> {
-  const data = await AsyncStorage.getItem("user");
-  return data ? JSON.parse(data) : null;
-}
-
-// PEGAR TOKEN
+/** Token já resolvido (string) ou null. Nunca retorna Promise pendente para o chamador. */
 export async function getAuthToken(): Promise<string | null> {
-  return await AsyncStorage.getItem("auth_token");
+  const session = await getAuthSession();
+  return session?.token ?? null;
 }
 
-//  LOGOUT
-export async function logout() {
-  await AsyncStorage.clear();
-}
-
-//  LIMPAR SESSÃO
-export async function clearAuthSession() {
-  await logout();
+export async function clearAuthSession(): Promise<void> {
+  await AsyncStorage.multiRemove([SESSION_KEY, ...LEGACY_KEYS]);
 }
