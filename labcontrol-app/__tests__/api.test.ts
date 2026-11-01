@@ -1,13 +1,19 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
-
 import { getAuthSession, saveAuthSession } from "../lib/auth";
 import { ApiError, apiFetch, setUnauthorizedHandler } from "../services/api";
-import { API_URL, TOKEN, USER, hangingFetch, mockFetch, sentHeader } from "./testUtils";
+import {
+  API_URL,
+  TOKEN,
+  USER,
+  hangingFetch,
+  mockFetch,
+  resetStorage,
+  sentHeader,
+} from "./testUtils";
 
 const onUnauthorized = jest.fn();
 
 beforeEach(async () => {
-  await AsyncStorage.clear();
+  await resetStorage();
   process.env.EXPO_PUBLIC_API_URL = API_URL;
   onUnauthorized.mockReset();
   setUnauthorizedHandler(onUnauthorized);

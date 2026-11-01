@@ -1,11 +1,9 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
-
 import { getAuthSession } from "../lib/auth";
 import { login } from "../services/authService";
-import { API_URL, TOKEN, USER, mockFetch } from "./testUtils";
+import { API_URL, TOKEN, USER, mockFetch, resetStorage } from "./testUtils";
 
 beforeEach(async () => {
-  await AsyncStorage.clear();
+  await resetStorage();
   process.env.EXPO_PUBLIC_API_URL = API_URL;
 });
 

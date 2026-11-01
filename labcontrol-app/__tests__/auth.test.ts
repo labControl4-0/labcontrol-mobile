@@ -1,16 +1,16 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import {
+  LEGACY_KEYS,
   clearAuthSession,
   getAuthSession,
   getAuthToken,
+  purgeLegacyStorage,
   saveAuthSession,
 } from "../lib/auth";
-import { TOKEN, USER } from "./testUtils";
+import { TOKEN, USER, resetStorage, secureStoreContents } from "./testUtils";
 
-beforeEach(async () => {
-  await AsyncStorage.clear();
-});
+beforeEach(resetStorage);
 
 describe("sessão (lib/auth.ts)", () => {
   it("persiste a sessão e a recupera depois (simula reabrir o app)", async () => {
@@ -41,23 +41,42 @@ describe("sessão (lib/auth.ts)", () => {
     expect(await getAuthSession()).toBeNull();
   });
 
-  it("logout limpa a sessão e as chaves legadas", async () => {
+  it("logout limpa token, perfil e chaves legadas", async () => {
     await saveAuthSession({ token: TOKEN, ...USER });
     await AsyncStorage.setItem("@labcontrol:token", "token-antigo");
-    await AsyncStorage.setItem("@labcontrol:user", "{}");
 
     await clearAuthSession();
 
     expect(await getAuthSession()).toBeNull();
-    expect(await getAuthToken()).toBeNull();
-    expect(await AsyncStorage.getItem("@labcontrol:token")).toBeNull();
-    expect(await AsyncStorage.getItem("@labcontrol:user")).toBeNull();
+    expect(secureStoreContents().size).toBe(0);
+    expect(await AsyncStorage.getAllKeys()).toEqual([]);
   });
 
-  it("descarta sessão corrompida no armazenamento", async () => {
-    await AsyncStorage.setItem("@labcontrol:session", "{json-invalido");
+  it("descarta perfil corrompido no armazenamento", async () => {
+    await saveAuthSession({ token: TOKEN, ...USER });
+    await AsyncStorage.setItem("@labcontrol:profile", "{json-invalido");
 
     expect(await getAuthSession()).toBeNull();
-    expect(await AsyncStorage.getItem("@labcontrol:session")).toBeNull();
+    expect(secureStoreContents().size).toBe(0);
+  });
+
+  it("perfil sem token (ex.: aba web fechada) volta ao login e é apagado", async () => {
+    await saveAuthSession({ token: TOKEN, ...USER });
+    secureStoreContents().clear();
+
+    expect(await getAuthSession()).toBeNull();
+    expect(await AsyncStorage.getItem("@labcontrol:profile")).toBeNull();
+  });
+
+  it("remove na abertura as chaves antigas que guardavam o token", async () => {
+    await AsyncStorage.setItem("@labcontrol:session", JSON.stringify({ token: TOKEN }));
+    await AsyncStorage.setItem("@labcontrol:token", TOKEN);
+    await AsyncStorage.setItem("profile_image_uri", "file:///foto.jpg");
+
+    await purgeLegacyStorage();
+
+    for (const key of LEGACY_KEYS) {
+      expect(await AsyncStorage.getItem(key)).toBeNull();
+    }
   });
 });
