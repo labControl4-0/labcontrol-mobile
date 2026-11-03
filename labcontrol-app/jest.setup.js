@@ -5,7 +5,9 @@ jest.mock("@react-native-async-storage/async-storage", () =>
 
 // SecureStore em memória. `__store` permite aos testes inspecionar o conteúdo.
 jest.mock("expo-secure-store", () => {
-  const store = new Map();
+  // Em globalThis para sobreviver a jest.resetModules(), como o Keystore real
+  // sobrevive ao app ser fechado.
+  const store = (globalThis.__SECURE_STORE__ = globalThis.__SECURE_STORE__ || new Map());
   const VALID_KEY = /^[A-Za-z0-9._-]+$/;
 
   const check = (key) => {
@@ -29,3 +31,11 @@ jest.mock("expo-secure-store", () => {
     }),
   };
 });
+
+// SQLite real (sql.js) com "arquivo" em memória que sobrevive à reabertura.
+jest.mock("expo-sqlite", () => require("./__tests__/mocks/expoSqlite"));
+
+// UUID v4 do Node no lugar do módulo nativo.
+jest.mock("expo-crypto", () => ({
+  randomUUID: jest.fn(() => require("crypto").randomUUID()),
+}));

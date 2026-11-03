@@ -1,6 +1,12 @@
 // Utilitários compartilhados pelos testes. Todos os dados são sintéticos.
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
+import * as SQLiteMock from "expo-sqlite";
+
+import { forgetDatabaseConnection } from "../lib/offline/database";
+
+type SqliteMock = { __disk: Map<string, Uint8Array>; __resetDisk: () => void };
+const sqliteMock = SQLiteMock as unknown as SqliteMock;
 
 export const API_URL = "https://api.example.test/api";
 export const TOKEN = "token-sintetico-123";
@@ -56,6 +62,31 @@ export function secureStoreContents(): Map<string, string> {
 export async function resetStorage() {
   await AsyncStorage.clear();
   secureStoreContents().clear();
+  forgetDatabaseConnection();
+  sqliteMock.__resetDisk();
+}
+
+/** Bytes de todos os bancos SQLite "gravados no aparelho", como texto. */
+export function sqliteFileDump(): string {
+  return [...sqliteMock.__disk.values()]
+    .map((bytes) => Buffer.from(bytes).toString("latin1"))
+    .join("\n");
+}
+
+/**
+ * Simula o sistema encerrando o app: descarta a conexão aberta e todo o estado
+ * em memória dos módulos. Só o que foi gravado no "aparelho" continua.
+ */
+export async function simulateAppKill() {
+  // O AsyncStorage real fica em disco; o mock fica no módulo, então é copiado.
+  const pairs = await AsyncStorage.multiGet(await AsyncStorage.getAllKeys());
+
+  forgetDatabaseConnection();
+  jest.resetModules();
+
+  const reopened = require("@react-native-async-storage/async-storage").default
+    ?? require("@react-native-async-storage/async-storage");
+  if (pairs.length > 0) await reopened.multiSet(pairs as [string, string][]);
 }
 
 /** Todos os pares chave/valor do AsyncStorage (no Android, gravado em SQLite). */
