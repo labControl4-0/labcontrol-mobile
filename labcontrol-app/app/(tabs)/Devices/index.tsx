@@ -11,7 +11,14 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { BottomNavBar } from "../../components/BottomNavBar";
-import { ApiError, apiFetch } from "../../../services/api";
+import { ApiError } from "../../../services/api";
+import {
+  getMachinesByPlantCached,
+  getPlantsCached,
+  getSectorsByPlantCached,
+} from "../../../services/catalogService";
+import { OfflineBanner } from "../../components/OfflineBanner";
+import { PendingOccurrencesButton } from "../../components/PendingOccurrencesButton";
 
 type MachineStatus = "active" | "warning" | "error" | "idle";
 
@@ -36,6 +43,8 @@ type Plant = {
 type PlantGroup = {
   plant: Plant;
   machines: Machine[];
+  /** Nome de cada setor, pelo id. Pode faltar se os setores não carregarem. */
+  sectorNames: Record<string, string>;
 };
 
 const STATUS_LABEL: Record<MachineStatus, string> = {
@@ -52,13 +61,24 @@ const STATUS_COLOR: Record<MachineStatus, string> = {
   idle: "#9CA3AF",
 };
 
-function MachineCard({ machine }: { machine: Machine }) {
+function MachineCard({
+  machine,
+  onPress,
+}: {
+  machine: Machine;
+  onPress: () => void;
+}) {
   const status = machine.status;
   const color = STATUS_COLOR[status] ?? "#9CA3AF";
   const label = STATUS_LABEL[status] ?? "Desconhecido";
 
   return (
-    <View style={styles.card}>
+    <TouchableOpacity
+      style={styles.card}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Registrar ocorrência em ${machine.name}`}
+    >
       <View style={[styles.statusDot, { backgroundColor: color }]} />
 
       <View style={styles.cardBody}>
@@ -76,7 +96,9 @@ function MachineCard({ machine }: { machine: Machine }) {
       >
         <Text style={[styles.badgeText, { color }]}>{label}</Text>
       </View>
-    </View>
+
+      <Ionicons name="add-circle-outline" size={20} color="#2563EB" />
+    </TouchableOpacity>
   );
 }
 
@@ -86,6 +108,8 @@ export default function MachinesScreen() {
   const [groups, setGroups] = useState<PlantGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Data da cópia offline mais antiga exibida; null quando tudo veio da API.
+  const [offlineSince, setOfflineSince] = useState<string | null>(null);
 
   useEffect(() => {
     loadMachines();
@@ -96,34 +120,40 @@ export default function MachinesScreen() {
       setLoading(true);
       setError(null);
 
-      const plants: Plant[] = await apiFetch("/plants");
+      const cachedDates: string[] = [];
+      const track = <T,>(r: { data: T; source: string; cachedAt?: string }) => {
+        if (r.source === "cache" && r.cachedAt) cachedDates.push(r.cachedAt);
+        return r.data;
+      };
+
+      const plants = track(await getPlantsCached()) as Plant[];
 
       const groupsData = await Promise.all(
-        plants.map(async (plant) => {
+        plants.map(async (plant): Promise<PlantGroup> => {
+          let machines: Machine[] = [];
+          let sectorNames: Record<string, string> = {};
+
           try {
-            const machines: Machine[] = await apiFetch(
-              `/machines/plant/${plant.id}`
-            );
-
-            return {
-              plant,
-              machines,
-            };
+            machines = track(await getMachinesByPlantCached(plant.id)) as Machine[];
           } catch (err) {
-            console.error(
-              `Erro ao buscar máquinas do lab ${plant.name}`,
-              err
-            );
-
-            return {
-              plant,
-              machines: [],
-            };
+            if (err instanceof ApiError && err.code === "unauthorized") throw err;
+            console.warn(`Máquinas do lab ${plant.name} indisponíveis.`);
           }
+
+          try {
+            const sectors = track(await getSectorsByPlantCached(plant.id));
+            sectorNames = Object.fromEntries(sectors.map((s) => [s.id, s.name]));
+          } catch (err) {
+            if (err instanceof ApiError && err.code === "unauthorized") throw err;
+            // Sem nome do setor, o formulário mostra só o id.
+          }
+
+          return { plant, machines, sectorNames };
         })
       );
 
       setGroups(groupsData);
+      setOfflineSince(cachedDates.length > 0 ? cachedDates.sort()[0] : null);
     } catch (err) {
       // Em 401 o api.ts já limpou a sessão e redirecionou para o login.
       setError(
@@ -160,15 +190,19 @@ export default function MachinesScreen() {
 
           <Text style={styles.title}>Máquinas</Text>
 
-          <View style={styles.headerSpacer} />
+          <PendingOccurrencesButton />
         </View>
+
+        {offlineSince && !loading ? (
+          <OfflineBanner cachedAt={offlineSince} onRetry={loadMachines} />
+        ) : null}
 
         <Text style={styles.subtitle}>
           {loading
             ? "Carregando..."
             : error
             ? ""
-            : `${totalMachines} máquina(s) em ${groups.length} lab(s)`}
+            : `${totalMachines} máquina(s) em ${groups.length} lab(s). Toque numa máquina para registrar uma ocorrência.`}
         </Text>
 
         {loading ? (
@@ -200,7 +234,7 @@ export default function MachinesScreen() {
             </Text>
           </View>
         ) : (
-          groups.map(({ plant, machines }) => (
+          groups.map(({ plant, machines, sectorNames }) => (
             <View key={plant.id} style={styles.section}>
               <View style={styles.sectionHeader}>
                 <Ionicons
@@ -224,6 +258,17 @@ export default function MachinesScreen() {
                     <MachineCard
                       key={machine.id}
                       machine={machine}
+                      onPress={() =>
+                        router.push({
+                          pathname: "/NewOccurrence",
+                          params: {
+                            machineId: machine.id,
+                            machineName: machine.name,
+                            sectorId: machine.sectorId ?? "",
+                            sectorName: sectorNames[machine.sectorId] ?? "",
+                          },
+                        } as any)
+                      }
                     />
                   ))}
                 </View>
@@ -255,10 +300,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     marginBottom: 18,
-  },
-
-  headerSpacer: {
-    width: 22,
   },
 
   title: {

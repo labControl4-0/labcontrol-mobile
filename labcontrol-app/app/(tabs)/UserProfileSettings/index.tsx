@@ -27,6 +27,7 @@ import { ApiError, apiFetch } from "../../../services/api";
 import { updateUserPhoto } from "../../../lib/users";
 import Toast from "react-native-toast-message";
 import { userCache } from "../../../lib/userCache";
+import { countUnsynced } from "../../../lib/offline/occurrenceRepository";
 
 // Foto de perfil fica no cache do próprio usuário (ver docs/POLITICA_DE_DADOS.md).
 const PROFILE_IMAGE_KEY = "profileImageUri";
@@ -161,8 +162,18 @@ export default function ProfileSettingsScreen() {
   }
 };
 
-  const handleLogout = () => {
-    Alert.alert("Sair", "Deseja sair da conta?", [
+  const handleLogout = async () => {
+    const session = await getAuthSession();
+    const pending = session?.user.id
+      ? await countUnsynced(session.user.id).catch(() => 0)
+      : 0;
+
+    const message =
+      pending > 0
+        ? `Você tem ${pending} ocorrência(s) ainda não enviada(s). Elas ficam salvas neste aparelho e serão enviadas quando você entrar de novo. Deseja sair?`
+        : "Deseja sair da conta?";
+
+    Alert.alert("Sair", message, [
       { text: "Cancelar", style: "cancel" },
       {
         text: "Sair",

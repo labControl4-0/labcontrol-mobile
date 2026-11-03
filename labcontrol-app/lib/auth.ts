@@ -6,8 +6,14 @@
 // - Perfil (id, nome, e-mail): AsyncStorage, sem o token.
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+import { clearAllCache, clearCacheExceptUser } from "./offline/cacheStore";
+import { deleteSyncedOccurrences } from "./offline/occurrenceRepository";
 import { secretStore } from "./secureStorage";
 import { clearAllUserCaches, clearOtherUsersCaches } from "./userCache";
+
+// Limpeza do SQLite é "melhor esforço": se o banco falhar, login e logout
+// continuam funcionando (a leitura já filtra por usuário).
+const bestEffort = (task: () => Promise<void>) => task().catch(() => undefined);
 
 const TOKEN_KEY = "labcontrol.auth.token";
 const PROFILE_KEY = "@labcontrol:profile";
@@ -74,8 +80,14 @@ export async function saveAuthSession(payload: AuthPayload): Promise<AuthSession
   await AsyncStorage.multiRemove(LEGACY_KEYS);
 
   // Troca de usuário: o cache de outra conta não pode continuar no aparelho.
-  if (session.user.id) await clearOtherUsersCaches(session.user.id);
-  else await clearAllUserCaches();
+  const userId = session.user.id;
+  if (userId) {
+    await clearOtherUsersCaches(userId);
+    await bestEffort(() => clearCacheExceptUser(userId));
+  } else {
+    await clearAllUserCaches();
+    await bestEffort(clearAllCache);
+  }
 
   return session;
 }
@@ -113,11 +125,17 @@ export async function getAuthToken(): Promise<string | null> {
   return session?.token ?? null;
 }
 
-/** Logout e sessão expirada: apaga token, perfil, cache por usuário e chaves legadas. */
+/**
+ * Logout e sessão expirada: apaga token, perfil, todo o cache e as ocorrências
+ * já enviadas. Ocorrências ainda não enviadas ficam no aparelho, visíveis só
+ * para o próprio usuário, e são enviadas quando ele entrar de novo.
+ */
 export async function clearAuthSession(): Promise<void> {
   await Promise.all([
     secretStore.removeItem(TOKEN_KEY),
     AsyncStorage.multiRemove([PROFILE_KEY, ...LEGACY_KEYS]),
     clearAllUserCaches(),
+    bestEffort(clearAllCache),
+    bestEffort(deleteSyncedOccurrences),
   ]);
 }
