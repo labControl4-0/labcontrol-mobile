@@ -20,7 +20,9 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
    npx expo start
    ```
 
-4. Rodar os testes de sessão e API
+   O app guarda o cache e as ocorrências offline num banco SQLite (`docs/SQLITE_SCHEMA.md`). Na web, o servidor precisa enviar os cabeçalhos `Cross-Origin-Embedder-Policy: credentialless` e `Cross-Origin-Opener-Policy: same-origin`. O `metro.config.js` já faz isso no `expo start`.
+
+4. Rodar os testes de sessão, armazenamento e offline
 
    ```bash
    npm test

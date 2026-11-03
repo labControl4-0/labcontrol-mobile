@@ -11,7 +11,9 @@ Este documento define onde cada dado do app fica no aparelho, por quanto tempo f
 | Token JWT | **Credencial** | Nativo: `expo-secure-store` (Keystore no Android, Keychain no iOS), chave `labcontrol.auth.token`, `WHEN_UNLOCKED_THIS_DEVICE_ONLY`. Web: `sessionStorage` da aba. | Até o logout ou o 401. Na web, também até fechar a aba. | Logout, 401 e troca de usuário |
 | Perfil (id, nome, e-mail) | **Sessão** (dado pessoal) | AsyncStorage, chave `@labcontrol:profile`, sem o token | Até o logout ou o 401 | Logout, 401 e sessão incompleta |
 | Foto de perfil (URI local) | **Cache do usuário** | AsyncStorage, `@labcontrol:cache:<userId>:profileImageUri` | 30 dias | Logout, 401, troca de usuário e prazo vencido |
-| Dados da API para uso offline (próximas tarefas) | **Cache do usuário, temporário** | `lib/userCache.ts` | 24 horas (padrão) | Logout, 401, troca de usuário e prazo vencido |
+| Plantas, máquinas e setores para uso offline | **Cache do usuário, temporário** | SQLite `labcontrol.db`, tabela `cache_entries` (`lib/offline/cacheStore.ts`) | 7 dias | Logout, 401, troca de usuário e prazo vencido |
+| Ocorrência de máquina ainda não enviada (`pending`, `failed`) | **Trabalho do usuário não sincronizado** | SQLite, tabela `occurrences` | Até ser enviada | **Mantida** no logout e no 401, visível só para o dono |
+| Ocorrência de máquina já enviada (`synced`) | **Cópia local** | SQLite, tabela `occurrences` | 30 dias | Logout, 401 e prazo vencido |
 | Chaves de versões anteriores (`@labcontrol:session`, `@labcontrol:token`, `@labcontrol:user`, `profile_image_uri`) | **Legado** | AsyncStorage | Nenhuma | Abertura do app, login e logout |
 
 ## Regras
@@ -35,13 +37,15 @@ Limitação: qualquer script da página consegue ler o `sessionStorage`. Por iss
 
 ## SQLite e offline first
 
-O projeto ainda não usa `expo-sqlite`. Quando passar a usar para dados offline:
+Desde o MOB-03, o app usa o `expo-sqlite` (schema em `docs/SQLITE_SCHEMA.md`). Regras:
 
-- o banco só pode receber dados das classes de cache acima, nunca o token;
-- as linhas devem ter o `userId` e uma data de validade;
-- o logout deve apagar as linhas, do mesmo jeito que `clearAllUserCaches()`.
+- o banco só recebe as classes de cache e de ocorrências acima, nunca o token;
+- toda linha tem `user_id`, e toda consulta filtra por ele;
+- o cache só aceita as chaves permitidas (`plants`, `machines:<id>`, `sectors:<id>`);
+- todo cache tem prazo, e as ocorrências enviadas saem do aparelho em 30 dias;
+- o logout apaga o cache e as ocorrências enviadas. As ocorrências ainda não enviadas ficam no aparelho, porque apagá-las perderia trabalho que não chegou ao servidor. Antes de sair, o app avisa quantas existem.
 
-O teste `noTokenLeak.test.ts` falha se um arquivo que importa `expo-sqlite` acessar o token ou a sessão.
+O teste `noTokenLeak.test.ts` falha se um arquivo que importa `expo-sqlite` acessar o token ou a sessão. O teste `offlineCache.test.ts` procura o token dentro do arquivo do banco.
 
 ## Evidências
 
