@@ -4,6 +4,7 @@
 // Sem rede, timeout, 5xx ou 401: continua "pending" e é reenviada depois.
 // Recusa definitiva (4xx): vira "failed" e espera o usuário pedir de novo.
 import { AppState, type AppStateStatus } from "react-native";
+import * as Network from "expo-network";
 
 import { getAuthSession } from "../lib/auth";
 import { eventTypeLabel } from "../lib/offline/occurrenceForm";
@@ -220,10 +221,10 @@ export function syncPendingOccurrences(
 /** Intervalo entre tentativas automáticas enquanto o app está aberto. */
 export const AUTO_SYNC_INTERVAL_MS = 30 * 1000;
 
-/** Tenta enviar ao abrir o app, ao voltar para ele e a cada 30 s. Retorna a função de parada. */
+/** Tenta ao abrir/retomar o app, reconectar a rede e periodicamente como fallback. */
 export function startAutoSync(): () => void {
-  const trySync = () => {
-    syncPendingOccurrences().catch(() => undefined);
+  const trySync = (force = false) => {
+    syncPendingOccurrences({ force }).catch(() => undefined);
   };
 
   trySync();
@@ -231,12 +232,20 @@ export function startAutoSync(): () => void {
     if (AppState.currentState === "active") trySync();
   }, AUTO_SYNC_INTERVAL_MS);
 
-  const subscription = AppState.addEventListener("change", (state: AppStateStatus) => {
+  const appStateSubscription = AppState.addEventListener("change", (state: AppStateStatus) => {
     if (state === "active") trySync();
+  });
+
+  const networkSubscription = Network.addNetworkStateListener((state) => {
+    if (state.isConnected === true && state.isInternetReachable !== false) {
+      // A conexão voltou: não espere o backoff nem a próxima janela de 30 s.
+      trySync(true);
+    }
   });
 
   return () => {
     clearInterval(timer);
-    subscription.remove();
+    appStateSubscription.remove();
+    networkSubscription.remove();
   };
 }
