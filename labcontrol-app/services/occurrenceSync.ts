@@ -10,6 +10,7 @@ import { eventTypeLabel } from "../lib/offline/occurrenceForm";
 import {
   listPendingForSync,
   markFailed,
+  markPending,
   markPendingRetry,
   markSynced,
   markSyncing,
@@ -22,7 +23,7 @@ export type SyncResult = {
   failed: number;
   remaining: number;
   /** Motivo da parada antes do fim da fila (ex.: sem conexão). */
-  stoppedBy: "network" | "timeout" | "server" | "unauthorized" | "config" | null;
+  stoppedBy: "network" | "timeout" | "server" | "unauthorized" | "config" | "session" | null;
 };
 
 type SyncListener = () => void;
@@ -78,18 +79,42 @@ function stopReason(error: unknown): SyncResult["stoppedBy"] {
   return error.code;
 }
 
-async function runSync(userId: string): Promise<SyncResult> {
+async function isSameSession(userId: string, token: string): Promise<boolean> {
+  try {
+    const current = await getAuthSession();
+    return current?.user.id === userId && current.token === token;
+  } catch {
+    return false;
+  }
+}
+
+async function runSync(userId: string, sessionToken: string): Promise<SyncResult> {
   const queue = await listPendingForSync(userId);
   const result: SyncResult = { sent: 0, failed: 0, remaining: queue.length, stoppedBy: null };
 
   for (const occurrence of queue) {
+    // Não continue a fila de uma conta depois de logout ou troca de usuário.
+    if (!(await isSameSession(userId, sessionToken))) {
+      result.stoppedBy = "session";
+      break;
+    }
+
     await markSyncing(occurrence.id);
     notifySyncChanged();
+
+    // markSyncing pode aguardar o SQLite; confira de novo antes da requisição.
+    if (!(await isSameSession(userId, sessionToken))) {
+      await markPending(occurrence.id);
+      result.stoppedBy = "session";
+      notifySyncChanged();
+      break;
+    }
 
     try {
       const response = await apiFetch("/machine-events", {
         method: "POST",
         body: JSON.stringify(buildEventPayload(occurrence)),
+        authToken: sessionToken,
       });
 
       const serverId = typeof response?.id === "string" ? response.id : null;
@@ -129,7 +154,7 @@ export function syncPendingOccurrences(): Promise<SyncResult | null> {
   running = (async () => {
     const session = await getAuthSession();
     const userId = session?.user.id;
-    return userId ? runSync(userId) : null;
+    return userId ? runSync(userId, session.token) : null;
   })().finally(() => {
     running = null;
   });
