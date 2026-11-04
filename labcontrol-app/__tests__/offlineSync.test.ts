@@ -1,5 +1,5 @@
 // MOB-03: fila offline. Backend parado nunca pode deixar a ocorrência como enviada.
-import { saveAuthSession } from "../lib/auth";
+import { getAuthSession, saveAuthSession } from "../lib/auth";
 import { SYNC_STATUS_UI } from "../lib/offline/occurrenceForm";
 import {
   countUnsynced,
@@ -12,6 +12,8 @@ import { setUnauthorizedHandler } from "../services/api";
 import { buildEventPayload, syncPendingOccurrences } from "../services/occurrenceSync";
 import {
   API_URL,
+  OTHER_TOKEN,
+  OTHER_USER,
   TOKEN,
   USER,
   hangingFetch,
@@ -177,6 +179,38 @@ describe("recusa e sessão", () => {
 
     expect(result?.stoppedBy).toBe("unauthorized");
     expect((await getOccurrence(USER.id, created.id))?.syncStatus).toBe("pending");
+  });
+
+  it("para a fila na troca de sessão e mantém os envios restantes pendentes", async () => {
+    const first = await createOccurrence(FORM);
+    const second = await createOccurrence({
+      ...FORM,
+      description: "Segunda ocorrência ainda não enviada.",
+    });
+    const fetchMock = jest.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer " + TOKEN);
+      await saveAuthSession({ token: OTHER_TOKEN, ...OTHER_USER });
+      return {
+        ok: true,
+        status: 201,
+        text: async () => JSON.stringify({ id: "srv-1" }),
+      } as Response;
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await syncPendingOccurrences();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ sent: 1, remaining: 1, stoppedBy: "session" });
+    expect(await getOccurrence(USER.id, first.id)).toMatchObject({
+      syncStatus: "synced",
+      serverId: "srv-1",
+    });
+    expect(await getOccurrence(USER.id, second.id)).toMatchObject({
+      syncStatus: "pending",
+      syncedAt: null,
+    });
+    expect((await getAuthSession())?.user.id).toBe(OTHER_USER.id);
   });
 
   it("sem sessão, não tenta enviar", async () => {
