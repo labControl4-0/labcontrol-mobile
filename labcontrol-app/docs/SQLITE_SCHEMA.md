@@ -1,6 +1,6 @@
 # SQLite e fila offline
 
-Tarefa: **MOB-03**. Dependências: MOB-01, MOB-02 e BE-05.
+Tarefas: **MOB-03 e MOB-04**. Dependências: MOB-01, MOB-02, MOB-03 e BE-06.
 
 ## Fluxo escolhido: ocorrência de máquina
 
@@ -60,23 +60,30 @@ Dados permitidos no cache (`lib/offline/cacheStore.ts` recusa qualquer outra cha
 
 Ficam fora do cache: usuários, e-mails, token e qualquer dado pessoal (ver `POLITICA_DE_DADOS.md`).
 
+### Versão 2
+
+A migração v2 preserva todos os registros da v1, reconstrói a tabela `occurrences` para aceitar `conflict` e adiciona `retry_after_at` (ISO 8601 UTC). O estado `syncing` continua voltando para `pending` na abertura do app.
+
+| Campo/estado | Regra |
+|---|---|
+| `retry_after_at` | Próximo instante permitido para retry automático; nulo quando não há backoff. |
+| `conflict` | Resposta 409/412. Os dados locais ficam preservados e aguardam revisão explícita. |
+| tentativas automáticas | Até 5 tentativas no total; backoff de 5, 10, 20 e 40 s. Depois, o registro vira `failed`. |
+| retry manual | O botão **Sincronizar agora** antecipa o backoff; **Tentar enviar de novo** reinicia o contador de `failed`. |
 ## Estados de sincronização
 
-```
-            salvar               2xx
- (form) ──────────▶ pending ─────────▶ syncing ─────────▶ synced
-                      ▲  ▲               │
-   sem rede, timeout, │  └───────────────┘
-   5xx, 408, 429, 401 │                  │ 4xx (400, 403, 404, 409, 422...)
-                      │                  ▼
-                      └─── usuário ─── failed
-                         "tentar de novo"
-```
+| Resultado da tentativa | Estado local | Comportamento |
+|---|---|---|
+| HTTP 2xx | `synced` | Só confirma depois da resposta; limpa retry e erro. |
+| Rede, timeout, 5xx, 408, 429 | `pending` | Para a fila no primeiro erro temporário e agenda backoff persistido. |
+| 4xx permanente | `failed` | Sai do envio automático; **Tentar enviar de novo** exige ação do usuário. |
+| HTTP 409/412 | `conflict` | Mantém os dados locais, mostra o erro e não reenvia sem ação explícita. |
 
-- **Uma ocorrência só vira `synced` depois de uma resposta 2xx da API.** Nenhuma tela mostra "enviada" antes disso.
-- Se o app for fechado no meio de um envio, o registro em `syncing` volta para `pending` na próxima abertura.
-- A fila é enviada na ordem de criação. Na primeira falha temporária, o envio para (as próximas também falhariam) e é retomado depois.
-- Chamadas simultâneas (botão + timer) compartilham a mesma execução, então nada é enviado duas vezes pelo app.
+- O retry automático tem limite de 5 tentativas totais. Os intervalos são 5, 10, 20 e 40 segundos; depois a ocorrência passa a `failed`.
+- **Sincronizar agora** ignora o backoff. O retry de uma ocorrência `conflict` exige tocar em **Reenviar após revisar**.
+- Se o app fechar durante o envio, `syncing` volta a `pending` na abertura. `retry_after_at` sobrevive ao reinício.
+- A fila preserva a ordem de criação e para na primeira falha temporária.
+- A sincronização dispara imediatamente quando a rede volta, ao retomar o app e a cada 30 s como fallback. Chamadas simultâneas compartilham a mesma execução.
 
 ## Contrato com a API
 
@@ -94,9 +101,9 @@ O backend atual (`CreateMachineEventDto`) aceita só `machineId`, `eventType` e 
 }
 ```
 
-`clientId`, `sectorId`, `description` e `occurredAt` são ignorados pelo backend atual. Eles já estão no corpo para quando o **BE-05** aceitar esses campos.
+`clientId`, `sectorId`, `description` e `occurredAt` são ignorados pelo backend atual. O cliente mantém o mesmo UUID em `clientId` e no header `Idempotency-Key` em todas as tentativas.
 
-**Pendência no backend (BE-05): idempotência.** Se a API gravar a ocorrência e a resposta se perder no caminho (queda de rede depois do commit), o app reenvia e o servidor cria um evento duplicado. O UUID vai na mensagem (`Ref. app`) para que duplicatas possam ser identificadas. A correção definitiva é o BE-05 aceitar `clientId` e responder com o evento já existente quando ele se repetir.
+**Dependência BE-06: idempotência no servidor.** O código atual do backend não reconhece esses identificadores; enquanto o BE-06 não persistir e deduplicar a chave, uma resposta perdida após o commit ainda pode gerar evento duplicado no retry. O cliente envia o contrato estável, mas a ausência de duplicidade só pode ser comprovada depois da integração com o backend.
 
 ## Retenção e logout
 
@@ -120,5 +127,11 @@ As pendentes são mantidas no logout porque são trabalho que ainda não chegou 
 | Backend parado não mostra pendente como concluída | `offlineSync.test.ts` › backend parado (rede, 503, timeout) |
 | Schema versionado | `offlineDatabase.test.ts` › schema SQLite |
 | Token fora do SQLite | `offlineCache.test.ts` › o token nunca é gravado no arquivo SQLite |
+| Migração v1 → v2 preserva a fila | `offlineDatabase.test.ts` › migra V1 para V2 sem perder pendências |
+| Backoff, limite e conflito | `offlineSync.test.ts` › retries limitados e conflito explícito |
+| Retomada automática após reconexão | `offlineSync.test.ts` › sincroniza automaticamente quando a rede volta |
 
 O vídeo de demonstração segue o roteiro em `docs/ROTEIRO_VIDEO_OFFLINE.md`.
+
+
+A matriz de cenários e as evidências de integração estão em `docs/MATRIZ_SYNC_OFFLINE.md`.
