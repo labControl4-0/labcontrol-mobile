@@ -2,6 +2,8 @@ import { getAuthSession, saveAuthSession } from "../lib/auth";
 import { ApiError, apiFetch, setUnauthorizedHandler } from "../services/api";
 import {
   API_URL,
+  OTHER_TOKEN,
+  OTHER_USER,
   TOKEN,
   USER,
   hangingFetch,
@@ -47,6 +49,19 @@ describe("header de autorização", () => {
     await apiFetch("/Auth/login", { method: "POST", body: "{}", skipAuth: true });
 
     expect(sentHeader(fetchMock, "Authorization")).toBeNull();
+  });
+
+  it("usa o token fixado da sessão que iniciou a operação", async () => {
+    await saveAuthSession({ token: OTHER_TOKEN, ...OTHER_USER });
+    const fetchMock = mockFetch({ status: 201, body: {} });
+
+    await apiFetch("/machine-events", {
+      method: "POST",
+      body: "{}",
+      authToken: TOKEN,
+    });
+
+    expect(sentHeader(fetchMock, "Authorization")).toBe("Bearer " + TOKEN);
   });
 });
 
@@ -96,6 +111,16 @@ describe("expiração de sessão (401)", () => {
     await apiFetch("/plants").catch(() => undefined);
 
     expect((await getAuthSession())?.token).toBe(TOKEN);
+    expect(onUnauthorized).not.toHaveBeenCalled();
+  });
+
+  it("401 do token fixado não encerra a sessão atual de outra conta", async () => {
+    await saveAuthSession({ token: OTHER_TOKEN, ...OTHER_USER });
+    mockFetch({ status: 401 });
+
+    await apiFetch("/machine-events", { authToken: TOKEN }).catch(() => undefined);
+
+    expect((await getAuthSession())?.token).toBe(OTHER_TOKEN);
     expect(onUnauthorized).not.toHaveBeenCalled();
   });
 });
