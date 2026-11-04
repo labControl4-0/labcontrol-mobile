@@ -18,14 +18,17 @@ const bestEffort = (task: () => Promise<void>) => task().catch(() => undefined);
 const TOKEN_KEY = "labcontrol.auth.token";
 const PROFILE_KEY = "@labcontrol:profile";
 
-// Chaves de versões anteriores. "@labcontrol:session" e "@labcontrol:token"
-// guardavam o token no AsyncStorage; "profile_image_uri" não era separada por
-// usuário. São apagadas ao gravar ou encerrar a sessão e na abertura do app.
+// Chaves de versões anteriores. "@labcontrol:session", "@labcontrol:token",
+// "user" e "auth_token" guardavam credenciais no AsyncStorage;
+// "profile_image_uri" não era separada por usuário. São apagadas ao gravar ou
+// encerrar a sessão e na abertura do app.
 export const LEGACY_KEYS = [
   "@labcontrol:session",
   "@labcontrol:token",
   "@labcontrol:user",
   "profile_image_uri",
+  "user",
+  "auth_token",
 ];
 
 /** Remove dados de versões anteriores. Chamado na abertura do app. */
