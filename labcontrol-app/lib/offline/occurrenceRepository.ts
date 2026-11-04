@@ -192,13 +192,13 @@ export async function markSynced(id: string, serverId: string | null): Promise<v
 }
 
 /** Falha temporária: agenda retries exponenciais e limita o total de tentativas automáticas. */
-export async function markPendingRetry(id: string, error: string): Promise<void> {
+export async function markPendingRetry(id: string, error: string): Promise<"pending" | "failed"> {
   const db = await getDatabase();
   const current = await db.getFirstAsync<{ attempts: number }>(
     "SELECT attempts FROM occurrences WHERE id = ? AND sync_status = 'syncing'",
     [id]
   );
-  if (!current) return;
+  if (!current) return "pending";
 
   const attempts = current.attempts + 1;
   const exhausted = attempts >= MAX_AUTOMATIC_SYNC_ATTEMPTS;
@@ -213,6 +213,7 @@ export async function markPendingRetry(id: string, error: string): Promise<void>
      WHERE id = ? AND sync_status = 'syncing'`,
     [status, error.slice(0, MAX_ERROR_LENGTH), attempts, retryAfterAt, nowIso(), id]
   );
+  return status;
 }
 
 /** Recusa definitiva do servidor (ex.: 400, 403, 404): sai da fila até retry manual. */
