@@ -17,6 +17,7 @@ export type Occurrence = {
   occurredAt: string;
   syncStatus: SyncStatus;
   attempts: number;
+  retryAfterAt: string | null;
   lastError: string | null;
   serverId: string | null;
   createdAt: string;
@@ -48,6 +49,7 @@ type OccurrenceRow = {
   occurred_at: string;
   sync_status: SyncStatus;
   attempts: number;
+  retry_after_at: string | null;
   last_error: string | null;
   server_id: string | null;
   created_at: string;
@@ -68,6 +70,7 @@ function fromRow(row: OccurrenceRow): Occurrence {
     occurredAt: row.occurred_at,
     syncStatus: row.sync_status,
     attempts: row.attempts,
+    retryAfterAt: row.retry_after_at,
     lastError: row.last_error,
     serverId: row.server_id,
     createdAt: row.created_at,
@@ -77,7 +80,15 @@ function fromRow(row: OccurrenceRow): Occurrence {
 }
 
 const MAX_ERROR_LENGTH = 300;
+export const MAX_AUTOMATIC_SYNC_ATTEMPTS = 5;
+export const RETRY_BASE_DELAY_MS = 5 * 1000;
+export const RETRY_MAX_DELAY_MS = 5 * 60 * 1000;
 const nowIso = () => new Date().toISOString();
+
+export function retryDelayForAttempt(attempt: number): number {
+  const exponent = Math.max(0, Math.min(attempt - 1, 30));
+  return Math.min(RETRY_MAX_DELAY_MS, RETRY_BASE_DELAY_MS * 2 ** exponent);
+}
 
 /** Grava a ocorrência como pendente, com UUID v4 gerado no aparelho. */
 export async function createOccurrence(input: NewOccurrence): Promise<Occurrence> {
@@ -174,29 +185,55 @@ export async function markSynced(id: string, serverId: string | null): Promise<v
   await db.runAsync(
     `UPDATE occurrences
        SET sync_status = 'synced', server_id = ?, last_error = NULL,
-           attempts = attempts + 1, synced_at = ?, updated_at = ?
+           retry_after_at = NULL, attempts = attempts + 1, synced_at = ?, updated_at = ?
      WHERE id = ?`,
     [serverId, now, now, id]
   );
 }
 
-/** Falha temporária (sem rede, timeout, erro 5xx): continua na fila. */
+/** Falha temporária: agenda retries exponenciais e limita o total de tentativas automáticas. */
 export async function markPendingRetry(id: string, error: string): Promise<void> {
+  const db = await getDatabase();
+  const current = await db.getFirstAsync<{ attempts: number }>(
+    "SELECT attempts FROM occurrences WHERE id = ? AND sync_status = 'syncing'",
+    [id]
+  );
+  if (!current) return;
+
+  const attempts = current.attempts + 1;
+  const exhausted = attempts >= MAX_AUTOMATIC_SYNC_ATTEMPTS;
+  const retryAfterAt = exhausted
+    ? null
+    : new Date(Date.now() + retryDelayForAttempt(attempts)).toISOString();
+  const status = exhausted ? "failed" : "pending";
+
+  await db.runAsync(
+    `UPDATE occurrences
+       SET sync_status = ?, last_error = ?, attempts = ?, retry_after_at = ?, updated_at = ?
+     WHERE id = ? AND sync_status = 'syncing'`,
+    [status, error.slice(0, MAX_ERROR_LENGTH), attempts, retryAfterAt, nowIso(), id]
+  );
+}
+
+/** Recusa definitiva do servidor (ex.: 400, 403, 404): sai da fila até retry manual. */
+export async function markFailed(id: string, error: string): Promise<void> {
   const db = await getDatabase();
   await db.runAsync(
     `UPDATE occurrences
-       SET sync_status = 'pending', last_error = ?, attempts = attempts + 1, updated_at = ?
+       SET sync_status = 'failed', last_error = ?, retry_after_at = NULL,
+           attempts = attempts + 1, updated_at = ?
      WHERE id = ?`,
     [error.slice(0, MAX_ERROR_LENGTH), nowIso(), id]
   );
 }
 
-/** Recusa definitiva do servidor (ex.: 400, 404): sai da fila até o usuário pedir de novo. */
-export async function markFailed(id: string, error: string): Promise<void> {
+/** Conflito do servidor: preserva o formulário local até o usuário decidir reenviar. */
+export async function markConflict(id: string, error: string): Promise<void> {
   const db = await getDatabase();
   await db.runAsync(
     `UPDATE occurrences
-       SET sync_status = 'failed', last_error = ?, attempts = attempts + 1, updated_at = ?
+       SET sync_status = 'conflict', last_error = ?, retry_after_at = NULL,
+           attempts = attempts + 1, updated_at = ?
      WHERE id = ?`,
     [error.slice(0, MAX_ERROR_LENGTH), nowIso(), id]
   );
@@ -206,8 +243,22 @@ export async function markFailed(id: string, error: string): Promise<void> {
 export async function requeueFailed(userId: string, id: string): Promise<void> {
   const db = await getDatabase();
   await db.runAsync(
-    `UPDATE occurrences SET sync_status = 'pending', updated_at = ?
+    `UPDATE occurrences
+       SET sync_status = 'pending', last_error = NULL, attempts = 0,
+           retry_after_at = NULL, updated_at = ?
      WHERE user_id = ? AND id = ? AND sync_status = 'failed'`,
+    [nowIso(), userId, id]
+  );
+}
+
+/** O usuário revisou o conflito e pediu explicitamente uma nova tentativa. */
+export async function requeueConflict(userId: string, id: string): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    `UPDATE occurrences
+       SET sync_status = 'pending', last_error = NULL, attempts = 0,
+           retry_after_at = NULL, updated_at = ?
+     WHERE user_id = ? AND id = ? AND sync_status = 'conflict'`,
     [nowIso(), userId, id]
   );
 }
