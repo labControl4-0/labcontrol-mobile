@@ -128,6 +128,7 @@ As pendentes são mantidas no logout porque são trabalho que ainda não chegou 
 | Schema versionado | `offlineDatabase.test.ts` › schema SQLite |
 | Token fora do SQLite | `offlineCache.test.ts` › o token nunca é gravado no arquivo SQLite |
 | Migração v1 → v2 preserva a fila | `offlineDatabase.test.ts` › migra V1 para V2 sem perder pendências |
+| Backoff e horário do retry sobrevivem ao reinício | `offlineSync.test.ts` › backoff e horário do retry continuam persistidos depois de reabrir o app |
 | Backoff, limite e conflito | `offlineSync.test.ts` › retries limitados e conflito explícito |
 | Retomada automática após reconexão | `offlineSync.test.ts` › sincroniza automaticamente quando a rede volta |
 
