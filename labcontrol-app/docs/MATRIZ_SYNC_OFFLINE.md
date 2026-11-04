@@ -9,7 +9,7 @@ Dados de teste devem ser sintéticos. O worker mantém a ordem da fila, limita r
 | Backoff | Repetir timeout/5xx | Retry agendado para 5, 10, 20 e 40 s; respeitar `retry_after_at` | `offlineSync.test.ts` — backoff |
 | Limite | Falhar em cinco tentativas totais | Estado `failed`, sem novas tentativas automáticas; retry manual reinicia o contador | `offlineSync.test.ts` — limite |
 | Conflito | API responde 409 ou 412 | Estado `conflict`; payload local e erro preservados; nenhum retry automático; ação **Reenviar após revisar** inicia nova tentativa | `offlineSync.test.ts` — conflito |
-| Reinício | Encerrar o app com fila pendente/backoff | SQLite preserva ocorrência, tentativas e horário agendado; ao abrir, segue o agendamento | `offlineDatabase.test.ts` — migração e reabertura |
+| Reinício | Encerrar o app com fila pendente/backoff | SQLite preserva ocorrência, tentativas e horário agendado; ao abrir, segue o agendamento | `offlineDatabase.test.ts` — migração e reabertura; `offlineSync.test.ts` — backoff após reinício |
 | Timeout após commit | API persiste e perde a resposta; o app repete a operação | O mesmo UUID continua em `clientId` e `Idempotency-Key`; o backend deve retornar o mesmo evento sem duplicar | Dependente do BE-06 e de teste de integração |
 
 ## Evidência de integração pendente
