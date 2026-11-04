@@ -18,6 +18,7 @@ import { getAuthSession } from "../../../lib/auth";
 import { SYNC_STATUS_UI, eventTypeLabel } from "../../../lib/offline/occurrenceForm";
 import {
   listOccurrences,
+  requeueConflict,
   requeueFailed,
   type Occurrence,
 } from "../../../lib/offline/occurrenceRepository";
@@ -42,6 +43,20 @@ function syncMessage(result: SyncResult | null) {
       text2: `${result.remaining} ocorrência(s) continuam pendentes.`,
     };
   }
+  if (result.stoppedBy === "backoff") {
+    return {
+      type: "info",
+      text1: "Nova tentativa agendada",
+      text2: `${result.remaining} ocorrência(s) aguardam o retry automático.`,
+    };
+  }
+  if (result.conflicted > 0) {
+    return {
+      type: "info",
+      text1: `${result.conflicted} conflito(s) para revisar`,
+      text2: `${result.remaining} ocorrência(s) continuam na fila.`,
+    };
+  }
   if (result.stoppedBy) {
     return {
       type: "info",
@@ -49,22 +64,24 @@ function syncMessage(result: SyncResult | null) {
       text2: `${result.remaining} ocorrência(s) continuam pendentes.`,
     };
   }
-  if (result.sent === 0 && result.failed === 0) {
+  if (result.sent === 0 && result.failed === 0 && result.conflicted === 0) {
     return { type: "info", text1: "Nada pendente para enviar" };
   }
   return {
     type: result.failed > 0 ? "error" : "success",
     text1: `${result.sent} enviada(s)`,
-    text2: result.failed > 0 ? `${result.failed} recusada(s) pelo servidor.` : undefined,
+    text2: result.failed > 0 ? `${result.failed} recusada(s) ou sem retry automático.` : undefined,
   };
 }
 
 function OccurrenceCard({
   item,
   onRetry,
+  onResolveConflict,
 }: {
   item: Occurrence;
   onRetry: (id: string) => void;
+  onResolveConflict: (id: string) => void;
 }) {
   const status = SYNC_STATUS_UI[item.syncStatus];
 
@@ -92,6 +109,20 @@ function OccurrenceCard({
         <TouchableOpacity onPress={() => onRetry(item.id)} accessibilityRole="button">
           <Text style={styles.retry}>Tentar enviar de novo</Text>
         </TouchableOpacity>
+      ) : null}
+
+      {item.syncStatus === "conflict" ? (
+        <View>
+          <Text style={styles.conflictHelp}>
+            Nada foi sobrescrito. Revise o erro antes de pedir novo envio.
+          </Text>
+          <TouchableOpacity
+            onPress={() => onResolveConflict(item.id)}
+            accessibilityRole="button"
+          >
+            <Text style={styles.retry}>Reenviar após revisar</Text>
+          </TouchableOpacity>
+        </View>
       ) : null}
 
       <Text style={styles.cardId}>Ref.: {item.id}</Text>
@@ -127,7 +158,7 @@ export default function OccurrencesScreen() {
   const handleSyncNow = async () => {
     setSyncing(true);
     try {
-      const result = await syncPendingOccurrences();
+      const result = await syncPendingOccurrences({ force: true });
       Toast.show(syncMessage(result) as any);
     } finally {
       setSyncing(false);
@@ -139,6 +170,14 @@ export default function OccurrencesScreen() {
     const session = await getAuthSession();
     if (!session?.user.id) return;
     await requeueFailed(session.user.id, id);
+    notifySyncChanged();
+    await handleSyncNow();
+  };
+
+  const handleResolveConflict = async (id: string) => {
+    const session = await getAuthSession();
+    if (!session?.user.id) return;
+    await requeueConflict(session.user.id, id);
     notifySyncChanged();
     await handleSyncNow();
   };
@@ -187,7 +226,13 @@ export default function OccurrencesScreen() {
           data={items}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
-          renderItem={({ item }) => <OccurrenceCard item={item} onRetry={handleRetry} />}
+          renderItem={({ item }) => (
+            <OccurrenceCard
+              item={item}
+              onRetry={handleRetry}
+              onResolveConflict={handleResolveConflict}
+            />
+          )}
           ListEmptyComponent={
             <Text style={styles.empty}>
               Nenhuma ocorrência registrada. Toque em + e escolha uma máquina.
@@ -252,6 +297,7 @@ const styles = StyleSheet.create({
   },
   statusText: { fontSize: 12, fontWeight: "700" },
   cardError: { fontSize: 11, color: "#B91C1C" },
+  conflictHelp: { fontSize: 11, color: "#9A3412", lineHeight: 16 },
   retry: { fontSize: 12, fontWeight: "700", color: "#2563EB", marginTop: 2 },
   cardId: { fontSize: 10, color: "#9CA3AF", marginTop: 2 },
 });
