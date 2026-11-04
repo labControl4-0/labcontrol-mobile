@@ -158,6 +158,15 @@ export async function markSyncing(id: string): Promise<void> {
   );
 }
 
+/** Cancela uma tentativa antes do envio e deixa o registro na fila sem contar retry. */
+export async function markPending(id: string): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    "UPDATE occurrences SET sync_status = 'pending', updated_at = ? WHERE id = ? AND sync_status = 'syncing'",
+    [nowIso(), id]
+  );
+}
+
 /** Só chamado depois de o servidor confirmar o recebimento (resposta 2xx). */
 export async function markSynced(id: string, serverId: string | null): Promise<void> {
   const db = await getDatabase();
