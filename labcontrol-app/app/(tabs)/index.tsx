@@ -12,8 +12,9 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { login, saveAuthSession } from "../../lib/auth";  
 import Toast from "react-native-toast-message";
+
+import { login } from "../../services/authService";
 
 export default function Index() {
   const router = useRouter();
@@ -24,36 +25,35 @@ export default function Index() {
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-const handleLogin = async () => {
-  if (isSubmitting) return;
+  const handleLogin = async () => {
+    if (isSubmitting) return;
 
-  if (!email.trim() || !password.trim()) {
-    return Alert.alert("Erro", "Preencha todos os campos");
-  }
+    if (!email.trim() || !password.trim()) {
+      return Alert.alert("Erro", "Preencha todos os campos");
+    }
 
-  try {
-    setIsSubmitting(true);
+    try {
+      setIsSubmitting(true);
 
-    const session = await login(email.trim(), password);
+      // login() já persiste a sessão (token + usuário).
+      await login({ email: email.trim(), password });
 
-    await saveAuthSession(session);
+      Toast.show({
+        type: "success",
+        text1: "Login realizado com sucesso!",
+      });
 
-    Toast.show({
-      type: "success",
-      text1: "Login realizado com sucesso !",
-    });
-
-    router.replace("/Dashboard");
-
-  } catch (error) {
-    Alert.alert(
-      "Login failed",
-      error instanceof Error ? error.message : "Erro ao logar"
-    );
-  } finally {
-    setIsSubmitting(false);
-  }
-};
+      router.replace("/Dashboard");
+    } catch (error) {
+      Toast.show({
+        type: "error",
+        text1: "Erro ao realizar login",
+        text2: error instanceof Error ? error.message : "Erro ao logar",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -72,14 +72,15 @@ const handleLogin = async () => {
             </Text>
 
             <View style={styles.form}>
-              {/* EMAIL */}
               <Text style={styles.label}>EMAIL</Text>
+
               <View style={styles.inputWrapper}>
                 <MaterialIcons
                   name="alternate-email"
                   size={20}
                   color="#9aa5bd"
                 />
+
                 <TextInput
                   style={styles.input}
                   placeholder="user@labcontroll.com"
@@ -91,16 +92,15 @@ const handleLogin = async () => {
                 />
               </View>
 
-              {/* PASSWORD */}
-              <Text style={[styles.label, styles.marginTop]}>
-                PASSWORD
-              </Text>
+              <Text style={[styles.label, styles.marginTop]}>PASSWORD</Text>
+
               <View style={styles.inputWrapper}>
                 <Ionicons
                   name="lock-closed-outline"
                   size={18}
                   color="#9aa5bd"
                 />
+
                 <TextInput
                   style={styles.input}
                   placeholder="••••••••"
@@ -122,7 +122,6 @@ const handleLogin = async () => {
                 </Pressable>
               </View>
 
-              {/* FORGOT */}
               <Pressable
                 style={styles.forgotButton}
                 onPress={() => router.push("/ForgotPassword")}
@@ -130,7 +129,6 @@ const handleLogin = async () => {
                 <Text style={styles.forgotText}>Forgot password?</Text>
               </Pressable>
 
-              {/* BUTTON */}
               <Pressable
                 style={[
                   styles.signInButton,
@@ -142,11 +140,11 @@ const handleLogin = async () => {
                 <Text style={styles.signInText}>
                   {isSubmitting ? "Signing In..." : "Sign In"}
                 </Text>
+
                 <Ionicons name="chevron-forward" size={18} color="#18dcd3" />
               </Pressable>
             </View>
 
-            {/* CREATE ACCOUNT */}
             <View style={styles.bottomStrip}>
               <Pressable onPress={() => router.push("/CreateAccount")}>
                 <Text style={styles.bottomText}>
@@ -157,7 +155,6 @@ const handleLogin = async () => {
             </View>
           </View>
 
-          {/* FOOTER */}
           <View style={styles.footer}>
             <Text style={styles.footerSecurity}>End-to-end Encrypted</Text>
             <Text style={styles.footerCopyright}>
