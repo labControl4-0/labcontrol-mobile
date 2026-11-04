@@ -32,6 +32,8 @@ export class ApiError extends Error {
 export type ApiRequestOptions = RequestInit & {
   /** Não envia token nem trata 401 como sessão expirada (ex.: login e cadastro). */
   skipAuth?: boolean;
+  /** Fixa a credencial da sessão dona de uma operação que pode atravessar uma troca de conta. */
+  authToken?: string | null;
   /** Sobrescreve o timeout padrão, em milissegundos. */
   timeoutMs?: number;
 };
@@ -122,6 +124,7 @@ export async function apiFetch(
 ): Promise<any> {
   const {
     skipAuth = false,
+    authToken: providedAuthToken,
     timeoutMs = getApiTimeoutMs(),
     signal: callerSignal,
     headers: rawHeaders,
@@ -139,8 +142,13 @@ export async function apiFetch(
 
   const url = `${baseUrl}${path.startsWith("/") ? path : `/${path}`}`;
 
-  // O token é resolvido aqui, antes de montar o header: o header recebe uma string.
-  const token = skipAuth ? null : await getAuthToken();
+  // Operações em fila podem fixar o token da sessão que as criou. As demais
+  // requisições sempre resolvem a credencial ativa antes de montar o header.
+  const token = skipAuth
+    ? null
+    : providedAuthToken !== undefined
+      ? providedAuthToken
+      : await getAuthToken();
 
   const headers = new Headers(rawHeaders);
 
