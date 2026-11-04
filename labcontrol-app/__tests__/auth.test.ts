@@ -44,6 +44,8 @@ describe("sessão (lib/auth.ts)", () => {
   it("logout limpa token, perfil e chaves legadas", async () => {
     await saveAuthSession({ token: TOKEN, ...USER });
     await AsyncStorage.setItem("@labcontrol:token", "token-antigo");
+    await AsyncStorage.setItem("user", JSON.stringify({ token: "token-antigo" }));
+    await AsyncStorage.setItem("auth_token", "token-antigo");
 
     await clearAuthSession();
 
@@ -72,6 +74,8 @@ describe("sessão (lib/auth.ts)", () => {
     await AsyncStorage.setItem("@labcontrol:session", JSON.stringify({ token: TOKEN }));
     await AsyncStorage.setItem("@labcontrol:token", TOKEN);
     await AsyncStorage.setItem("profile_image_uri", "file:///foto.jpg");
+    await AsyncStorage.setItem("user", JSON.stringify({ token: TOKEN, ...USER }));
+    await AsyncStorage.setItem("auth_token", TOKEN);
 
     await purgeLegacyStorage();
 
