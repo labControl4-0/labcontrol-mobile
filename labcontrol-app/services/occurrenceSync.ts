@@ -9,6 +9,7 @@ import { getAuthSession } from "../lib/auth";
 import { eventTypeLabel } from "../lib/offline/occurrenceForm";
 import {
   listPendingForSync,
+  markConflict,
   markFailed,
   markPending,
   markPendingRetry,
@@ -21,9 +22,10 @@ import { ApiError, apiFetch } from "./api";
 export type SyncResult = {
   sent: number;
   failed: number;
+  conflicted: number;
   remaining: number;
   /** Motivo da parada antes do fim da fila (ex.: sem conexão). */
-  stoppedBy: "network" | "timeout" | "server" | "unauthorized" | "config" | "session" | null;
+  stoppedBy: "network" | "timeout" | "server" | "unauthorized" | "config" | "session" | "backoff" | null;
 };
 
 type SyncListener = () => void;
@@ -67,10 +69,18 @@ export function buildEventPayload(o: Occurrence) {
   };
 }
 
+function isConflict(error: ApiError) {
+  return error.code === "http" && (error.status === 409 || error.status === 412);
+}
+
 function isPermanentRejection(error: ApiError) {
   if (error.code !== "http" || error.status === undefined) return false;
-  // 408 e 429 são temporários; o resto dos 4xx é recusa do conteúdo.
-  return error.status >= 400 && error.status < 500 && error.status !== 408 && error.status !== 429;
+  // 408 e 429 são temporários; conflitos têm estado próprio.
+  return error.status >= 400 &&
+    error.status < 500 &&
+    error.status !== 408 &&
+    error.status !== 429 &&
+    !isConflict(error);
 }
 
 function stopReason(error: unknown): SyncResult["stoppedBy"] {
@@ -88,14 +98,30 @@ async function isSameSession(userId: string, token: string): Promise<boolean> {
   }
 }
 
-async function runSync(userId: string, sessionToken: string): Promise<SyncResult> {
+async function runSync(
+  userId: string,
+  sessionToken: string,
+  force: boolean
+): Promise<SyncResult> {
   const queue = await listPendingForSync(userId);
-  const result: SyncResult = { sent: 0, failed: 0, remaining: queue.length, stoppedBy: null };
+  const result: SyncResult = {
+    sent: 0,
+    failed: 0,
+    conflicted: 0,
+    remaining: queue.length,
+    stoppedBy: null,
+  };
 
   for (const occurrence of queue) {
     // Não continue a fila de uma conta depois de logout ou troca de usuário.
     if (!(await isSameSession(userId, sessionToken))) {
       result.stoppedBy = "session";
+      break;
+    }
+
+    const retryAt = occurrence.retryAfterAt ? Date.parse(occurrence.retryAfterAt) : 0;
+    if (!force && retryAt > Date.now()) {
+      result.stoppedBy = "backoff";
       break;
     }
 
@@ -124,6 +150,13 @@ async function runSync(userId: string, sessionToken: string): Promise<SyncResult
     } catch (error) {
       const message = error instanceof Error ? error.message : "Erro desconhecido.";
 
+      if (error instanceof ApiError && isConflict(error)) {
+        await markConflict(occurrence.id, message);
+        result.conflicted += 1;
+        result.remaining -= 1;
+        continue;
+      }
+
       if (error instanceof ApiError && isPermanentRejection(error)) {
         await markFailed(occurrence.id, message);
         result.failed += 1;
@@ -145,18 +178,35 @@ async function runSync(userId: string, sessionToken: string): Promise<SyncResult
 
 /** Envia a fila do usuário logado. Chamadas simultâneas compartilham a mesma execução. */
 let running: Promise<SyncResult | null> | null = null;
+let forceRequested = false;
 
-export function syncPendingOccurrences(): Promise<SyncResult | null> {
-  // A trava é registrada antes de qualquer await: outra chamada no mesmo
-  // instante reaproveita esta execução em vez de enviar de novo.
-  if (running) return running;
+export function syncPendingOccurrences(
+  options: { force?: boolean } = {}
+): Promise<SyncResult | null> {
+  // Chamadas simultâneas compartilham o mesmo worker. Um pedido manual durante
+  // o worker agenda uma passada forçada após a execução atual.
+  if (running) {
+    if (options.force) forceRequested = true;
+    return running;
+  }
 
+  forceRequested = options.force === true;
   running = (async () => {
-    const session = await getAuthSession();
-    const userId = session?.user.id;
-    return userId ? runSync(userId, session.token) : null;
+    let result: SyncResult | null = null;
+
+    do {
+      const force = forceRequested;
+      forceRequested = false;
+
+      const session = await getAuthSession();
+      const userId = session?.user.id;
+      result = userId ? await runSync(userId, session.token, force) : null;
+    } while (forceRequested);
+
+    return result;
   })().finally(() => {
     running = null;
+    forceRequested = false;
   });
 
   return running;
