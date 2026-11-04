@@ -1,6 +1,6 @@
 // MOB-03: schema versionado, formulário → SQLite e persistência após reabrir o app.
-import { getDatabase } from "../lib/offline/database";
-import { SCHEMA_VERSION } from "../lib/offline/schema";
+import { forgetDatabaseConnection, getDatabase } from "../lib/offline/database";
+import { MIGRATIONS, SCHEMA_VERSION } from "../lib/offline/schema";
 import {
   createOccurrence,
   getOccurrence,
@@ -53,6 +53,62 @@ describe("schema SQLite", () => {
     await expect(
       db.runAsync("UPDATE occurrences SET sync_status = 'concluida' WHERE id = ?", [created.id])
     ).rejects.toThrow(/CHECK constraint/);
+  });
+
+  it("migra V1 para V2 sem perder pendências e aceita conflito", async () => {
+    const db = await getDatabase();
+    const createdAt = new Date().toISOString();
+
+    await db.execAsync(
+      "DROP TABLE cache_entries; DROP INDEX idx_occurrences_user_status; DROP TABLE occurrences;"
+    );
+    await db.execAsync(MIGRATIONS[0]);
+    await db.runAsync(
+      `INSERT INTO occurrences (
+         id, user_id, machine_id, machine_name, sector_id, sector_name,
+         event_type, description, occurred_at, sync_status, attempts,
+         created_at, updated_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 2, ?, ?)`,
+      [
+        "occ-migration-v1",
+        USER.id,
+        FORM.machineId,
+        FORM.machineName,
+        FORM.sectorId,
+        FORM.sectorName,
+        FORM.eventType,
+        FORM.description,
+        FORM.occurredAt,
+        createdAt,
+        createdAt,
+      ]
+    );
+    await db.execAsync("PRAGMA user_version = 1");
+    forgetDatabaseConnection();
+
+    const upgraded = await getDatabase();
+    const version = await upgraded.getFirstAsync<{ user_version: number }>("PRAGMA user_version");
+    const migrated = await upgraded.getFirstAsync<{
+      sync_status: string;
+      attempts: number;
+      retry_after_at: string | null;
+    }>("SELECT sync_status, attempts, retry_after_at FROM occurrences WHERE id = ?", [
+      "occ-migration-v1",
+    ]);
+
+    expect(version?.user_version).toBe(SCHEMA_VERSION);
+    expect(SCHEMA_VERSION).toBe(2);
+    expect(migrated).toEqual({ sync_status: "pending", attempts: 2, retry_after_at: null });
+    await upgraded.runAsync(
+      "UPDATE occurrences SET sync_status = 'conflict' WHERE id = ?",
+      ["occ-migration-v1"]
+    );
+    expect(
+      (await upgraded.getFirstAsync<{ sync_status: string }>(
+        "SELECT sync_status FROM occurrences WHERE id = ?",
+        ["occ-migration-v1"]
+      ))?.sync_status
+    ).toBe("conflict");
   });
 });
 
