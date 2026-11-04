@@ -107,6 +107,29 @@ describe("backend parado", () => {
     const repo = require("../lib/offline/occurrenceRepository");
     expect((await repo.getOccurrence(USER.id, created.id)).syncStatus).toBe("pending");
   });
+
+  it("backoff e horário do retry continuam persistidos depois de reabrir o app", async () => {
+    const created = await createOccurrence(FORM);
+    mockFetch({ status: 503, body: { title: "Service Unavailable" } });
+    await syncPendingOccurrences();
+    const beforeRestart = await getOccurrence(USER.id, created.id);
+
+    await simulateAppKill();
+
+    const repo = require("../lib/offline/occurrenceRepository");
+    const sync = require("../services/occurrenceSync");
+    const afterRestart = await repo.getOccurrence(USER.id, created.id);
+    expect(afterRestart).toMatchObject({
+      syncStatus: "pending",
+      attempts: 1,
+      retryAfterAt: beforeRestart?.retryAfterAt,
+    });
+
+    const fetchMock = mockFetch({ status: 201, body: { id: "srv-after-restart" } });
+    const result = await sync.syncPendingOccurrences();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result?.stoppedBy).toBe("backoff");
+  });
 });
 
 describe("backend de volta", () => {
