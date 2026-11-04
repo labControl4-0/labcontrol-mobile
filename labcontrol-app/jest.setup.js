@@ -35,6 +35,9 @@ jest.mock("expo-secure-store", () => {
 // SQLite real (sql.js) com "arquivo" em memória que sobrevive à reabertura.
 jest.mock("expo-sqlite", () => require("./__tests__/mocks/expoSqlite"));
 
+// Estado de rede controlável nos testes de reconexão.
+jest.mock("expo-network", () => require("./__tests__/mocks/expoNetwork"));
+
 // UUID v4 do Node no lugar do módulo nativo.
 jest.mock("expo-crypto", () => ({
   randomUUID: jest.fn(() => require("crypto").randomUUID()),
