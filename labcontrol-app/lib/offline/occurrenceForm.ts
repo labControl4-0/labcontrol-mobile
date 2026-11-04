@@ -123,4 +123,5 @@ export const SYNC_STATUS_UI: Record<SyncStatus, { label: string; color: string; 
   syncing: { label: "Enviando...", color: "#2563EB", icon: "cloud-upload-outline" },
   synced: { label: "Enviada ao servidor", color: "#15803D", icon: "checkmark-circle" },
   failed: { label: "Recusada pelo servidor", color: "#B91C1C", icon: "alert-circle" },
+  conflict: { label: "Conflito: revisão necessária", color: "#C2410C", icon: "warning-outline" },
 };
