@@ -165,7 +165,11 @@ async function runSync(
       }
 
       // Falha temporária: as próximas também falhariam. Para e tenta depois.
-      await markPendingRetry(occurrence.id, message);
+      const retryState = await markPendingRetry(occurrence.id, message);
+      if (retryState === "failed") {
+        result.failed += 1;
+        result.remaining -= 1;
+      }
       result.stoppedBy = stopReason(error);
       break;
     } finally {
