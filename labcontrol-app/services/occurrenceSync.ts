@@ -50,7 +50,7 @@ export function notifySyncChanged() {
 /**
  * Corpo enviado à API. O backend atual (CreateMachineEventDto) só lê
  * machineId, eventType e message; os demais campos são ignorados por ele e já
- * seguem para quando o BE-05 aceitar o UUID do aparelho (idempotência).
+ * seguem para quando o BE-06 aceitar o UUID estável da operação (idempotência).
  */
 export function buildEventPayload(o: Occurrence) {
   const sector = o.sectorName ? `${o.sectorName} (${o.sectorId})` : o.sectorId;
@@ -140,6 +140,7 @@ async function runSync(
       const response = await apiFetch("/machine-events", {
         method: "POST",
         body: JSON.stringify(buildEventPayload(occurrence)),
+        headers: { "Idempotency-Key": occurrence.id },
         authToken: sessionToken,
       });
 
