@@ -11,7 +11,7 @@ import {
   type NewOccurrence,
 } from "../lib/offline/occurrenceRepository";
 import { setUnauthorizedHandler } from "../services/api";
-import { buildEventPayload, syncPendingOccurrences } from "../services/occurrenceSync";
+import { buildEventPayload, startAutoSync, syncPendingOccurrences } from "../services/occurrenceSync";
 import {
   API_URL,
   OTHER_TOKEN,
@@ -42,6 +42,7 @@ const backendDown = () => {
 };
 
 beforeEach(async () => {
+  require("expo-network").__resetListeners();
   await resetStorage();
   process.env.EXPO_PUBLIC_API_URL = API_URL;
   setUnauthorizedHandler(() => undefined);
@@ -109,6 +110,44 @@ describe("backend parado", () => {
 });
 
 describe("backend de volta", () => {
+  it("sincroniza automaticamente quando a rede volta e não duplica a chamada", async () => {
+    const created = await createOccurrence(FORM);
+    const network = require("expo-network");
+    let online = false;
+    const fetchMock = jest.fn(async (_url: RequestInfo | URL, _init?: RequestInit) => {
+      if (!online) throw new TypeError("Network request failed");
+      return {
+        ok: true,
+        status: 201,
+        text: async () => JSON.stringify({ id: "srv-reconnected" }),
+      } as Response;
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    const stop = startAutoSync();
+
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect((await getOccurrence(USER.id, created.id))?.syncStatus).toBe("pending");
+
+      online = true;
+      network.__emitNetworkState({
+        type: "WIFI",
+        isConnected: true,
+        isInternetReachable: true,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(await getOccurrence(USER.id, created.id)).toMatchObject({
+        syncStatus: "synced",
+        serverId: "srv-reconnected",
+      });
+    } finally {
+      stop();
+    }
+  });
+
   it("só marca como enviada depois da resposta 2xx, guardando o id do servidor", async () => {
     const created = await createOccurrence(FORM);
     const firstAttempt = backendDown();
