@@ -36,6 +36,26 @@ jest.mock("expo-secure-store", () => {
 jest.mock("expo-sqlite", () => require("./__tests__/mocks/expoSqlite"));
 
 // UUID v4 do Node no lugar do módulo nativo.
+// Estado de rede controlado pelos testes via __emit(state).
+jest.mock("expo-network", () => {
+  const listeners = new Set();
+  let current = { isConnected: true, isInternetReachable: true };
+  return {
+    __emit: (state) => {
+      current = state;
+      for (const l of [...listeners]) l(state);
+    },
+    __setCurrent: (state) => {
+      current = state;
+    },
+    addNetworkStateListener: jest.fn((listener) => {
+      listeners.add(listener);
+      return { remove: () => listeners.delete(listener) };
+    }),
+    getNetworkStateAsync: jest.fn(async () => current),
+  };
+});
+
 jest.mock("expo-crypto", () => ({
   randomUUID: jest.fn(() => require("crypto").randomUUID()),
 }));

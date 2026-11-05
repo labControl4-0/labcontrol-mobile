@@ -110,14 +110,21 @@ describe("backend de volta", () => {
     backendDown();
     await syncPendingOccurrences();
 
-    const fetchMock = mockFetch({ status: 201, body: { id: "srv-1", machineId: FORM.machineId } });
+    // MOB-04: depois de uma falha de rede, confere no servidor (GET) antes do POST.
+    const fetchMock = mockFetch(
+      { status: 200, body: [] },
+      { status: 201, body: { id: "srv-1", machineId: FORM.machineId } }
+    );
     const result = await syncPendingOccurrences();
     const after = await getOccurrence(USER.id, created.id);
 
     expect(result).toMatchObject({ sent: 1, remaining: 0, stoppedBy: null });
     expect(after).toMatchObject({ syncStatus: "synced", serverId: "srv-1", lastError: null, attempts: 2 });
     expect(after?.syncedAt).not.toBeNull();
-    expect(fetchMock.mock.calls[0][0]).toBe(`${API_URL}/machine-events`);
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual([
+      `${API_URL}/machine-events/machine/${FORM.machineId}`,
+      `${API_URL}/machine-events`,
+    ]);
   });
 
   it("envia o corpo esperado pelo CreateMachineEventDto, com o UUID do aparelho", async () => {
