@@ -8,6 +8,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { clearAllCache, clearCacheExceptUser } from "./offline/cacheStore";
 import { deleteSyncedOccurrences } from "./offline/occurrenceRepository";
+import { clearPushRegistration } from "./push/pushStore";
 import { secretStore } from "./secureStorage";
 import { clearAllUserCaches, clearOtherUsersCaches } from "./userCache";
 
@@ -140,5 +141,6 @@ export async function clearAuthSession(): Promise<void> {
     clearAllUserCaches(),
     bestEffort(clearAllCache),
     bestEffort(deleteSyncedOccurrences),
+    bestEffort(clearPushRegistration),
   ]);
 }

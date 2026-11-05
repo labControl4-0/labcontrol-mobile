@@ -33,6 +33,14 @@ yarn-error.*
 # local env files
 .env*.local
 
+# Firebase / FCM / EAS (MOB-05): credenciais privadas nunca vão para o Git.
+google-services.json
+GoogleService-Info.plist
+*firebase-adminsdk*.json
+*service-account*.json
+credentials.json
+*.keystore
+
 # typescript
 *.tsbuildinfo
 

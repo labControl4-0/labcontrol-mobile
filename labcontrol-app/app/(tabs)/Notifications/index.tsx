@@ -10,6 +10,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { BottomNavBar } from "../../components/BottomNavBar";
+import { PushSetupCard } from "../../components/PushSetupCard";
 
 type Tone = "warning" | "success" | "info" | "error";
 
@@ -156,6 +157,8 @@ export default function NotificationsScreen() {
           Acompanhe alertas, falhas, manutenção e eventos
           importantes das máquinas em tempo real.
         </Text>
+
+        <PushSetupCard />
 
         <View style={styles.summaryCard}>
           <Text style={styles.summaryLabel}>
