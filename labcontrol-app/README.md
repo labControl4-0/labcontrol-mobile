@@ -10,10 +10,26 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
    npm install
    ```
 
-2. Start the app
+2. Configure a API
+
+   Copie `.env.example` para `.env` e defina `EXPO_PUBLIC_API_URL` com a URL base do backend (sem barra final). O `.env` não é versionado e nenhuma URL de servidor fica fixa no código. Depois de alterar o `.env`, reinicie o Expo com `npx expo start -c`.
+
+3. Start the app
 
    ```bash
    npx expo start
+   ```
+
+   O app guarda o cache e as ocorrências offline num banco SQLite (`docs/SQLITE_SCHEMA.md`). Na web, o servidor precisa enviar os cabeçalhos `Cross-Origin-Embedder-Policy: credentialless` e `Cross-Origin-Opener-Policy: same-origin`. O `metro.config.js` já faz isso no `expo start`.
+
+   Sincronização, conflitos e cenários offline: `docs/MATRIZ_CENARIOS_OFFLINE.md`.
+
+4. Rodar os testes de sessão, armazenamento e offline
+
+   O teste ponta a ponta contra a API real (`npm run test:e2e`) fica desligado no `npm test`. Veja como rodar na matriz de cenários.
+
+   ```bash
+   npm test
    ```
 
 In the output, you'll find options to open the app in a
