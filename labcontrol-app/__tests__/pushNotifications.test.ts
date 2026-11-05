@@ -317,6 +317,82 @@ describe("proteção do token", () => {
   });
 });
 
+// ─── Registro em andamento x logout (revisão do PR #15) ───────────────────────
+
+describe("registro em andamento durante o logout", () => {
+  /** fetch que segura o POST /devices até release() e registra todas as chamadas. */
+  function holdDevicePost() {
+    let release: (status: number) => void = () => undefined;
+    const seen: Array<{ url: string; method: string; auth: string | null }> = [];
+    const fn = jest.fn((url: string, init: RequestInit = {}) => {
+      const method = (init.method ?? "GET").toUpperCase();
+      seen.push({ url, method, auth: new Headers(init.headers).get("Authorization") });
+      if (method === "POST" && url === `${API_URL}/devices`) {
+        return new Promise((resolve) => {
+          release = (status) => resolve({ ok: status < 300, status, text: async () => "" });
+        });
+      }
+      return Promise.resolve({ ok: true, status: 204, text: async () => "" });
+    });
+    global.fetch = fn as never;
+    return { seen, release: (status = 201) => release(status), started: () => seen.length > 0 };
+  }
+
+  const waitFor = async (cond: () => boolean) => {
+    for (let i = 0; i < 200 && !cond(); i++) await new Promise((r) => setTimeout(r, 5));
+    expect(cond()).toBe(true);
+  };
+
+  it("logout espera o POST e remove o aparelho no servidor; nada fica salvo", async () => {
+    mockPerm.current = GRANTED;
+    const net = holdDevicePost();
+
+    const registering = setupPushNotifications({ prompt: false });
+    await waitFor(net.started);
+
+    const loggingOut = (async () => {
+      await unregisterPushDevice();
+      await clearAuthSession();
+    })();
+    net.release(201);
+    await Promise.all([registering, loggingOut]);
+
+    expect(await registering).toEqual({ status: "no_session" });
+    const del = net.seen.find((c) => c.method === "DELETE");
+    expect(del?.url).toBe(`${API_URL}/devices/${encodeURIComponent(PUSH_TOKEN)}`);
+    expect(del?.auth).toBe(`Bearer ${TOKEN}`);
+    expect(await getPushRegistration()).toBeNull();
+  });
+
+  it("sessão encerrada sem passar pelo logout (ex.: 401) também desfaz o registro", async () => {
+    mockPerm.current = GRANTED;
+    const net = holdDevicePost();
+
+    const registering = setupPushNotifications({ prompt: false });
+    await waitFor(net.started);
+    await clearAuthSession();
+    net.release(201);
+
+    expect(await registering).toEqual({ status: "no_session" });
+    expect(net.seen.some((c) => c.method === "DELETE" && c.auth === `Bearer ${TOKEN}`)).toBe(true);
+    expect(await getPushRegistration()).toBeNull();
+  });
+
+  it("troca de conta durante o POST: não grava o aparelho para o usuário novo", async () => {
+    mockPerm.current = GRANTED;
+    const net = holdDevicePost();
+
+    const registering = setupPushNotifications({ prompt: false });
+    await waitFor(net.started);
+    await saveAuthSession({ token: OTHER_TOKEN, ...OTHER_USER });
+    net.release(201);
+
+    expect(await registering).toEqual({ status: "no_session" });
+    expect(net.seen.find((c) => c.method === "DELETE")?.auth).toBe(`Bearer ${TOKEN}`);
+    expect(await getPushRegistration()).toBeNull();
+  });
+});
+
 // ─── Notificação local ────────────────────────────────────────────────────────
 
 describe("notificação local", () => {
