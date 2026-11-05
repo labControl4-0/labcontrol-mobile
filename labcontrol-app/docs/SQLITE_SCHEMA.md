@@ -60,7 +60,24 @@ Dados permitidos no cache (`lib/offline/cacheStore.ts` recusa qualquer outra cha
 
 Ficam fora do cache: usuários, e-mails, token e qualquer dado pessoal (ver `POLITICA_DE_DADOS.md`).
 
-## Estados de sincronização
+### Versão 2 (MOB-04)
+
+A tabela `occurrences` é recriada, porque o SQLite não altera um `CHECK` existente. Todos os registros da v1 são copiados.
+
+| Mudança | Descrição |
+|---|---|
+| `sync_status` | Aceita também `conflict` |
+| `retry_count` | Falhas temporárias seguidas desde o último sucesso (base do backoff) |
+| `next_attempt_at` | Quando a fila automática pode tentar de novo (ms desde 1970) |
+| `needs_check` | `1` quando uma tentativa anterior pode ter chegado ao servidor. O app confere antes de reenviar. Na migração, vale `1` para pendentes que já tinham tentativa. |
+| `local_version` | Aumenta a cada edição local; vai no POST como `clientVersion` |
+| `conflict_json` | Versão do servidor guardada quando há conflito |
+
+Estados, gatilhos, backoff, duplicidade e conflitos: `docs/MATRIZ_CENARIOS_OFFLINE.md`.
+
+## Estados de sincronização (MOB-03)
+
+> Atualizado no MOB-04: veja a máquina de estados completa, com `conflict` e a conferência antes do reenvio, em `docs/MATRIZ_CENARIOS_OFFLINE.md`.
 
 ```
             salvar               2xx
@@ -96,7 +113,9 @@ O backend atual (`CreateMachineEventDto`) aceita só `machineId`, `eventType` e 
 
 `clientId`, `sectorId`, `description` e `occurredAt` são ignorados pelo backend atual. Eles já estão no corpo para quando o **BE-05** aceitar esses campos.
 
-**Pendência no backend (BE-05): idempotência.** Se a API gravar a ocorrência e a resposta se perder no caminho (queda de rede depois do commit), o app reenvia e o servidor cria um evento duplicado. O UUID vai na mensagem (`Ref. app`) para que duplicatas possam ser identificadas. A correção definitiva é o BE-05 aceitar `clientId` e responder com o evento já existente quando ele se repetir.
+**Resolvido no app (MOB-04):** antes de reenviar uma ocorrência com falha incerta, o app confere no servidor pelo `Ref. app` e não duplica. O POST também leva `Idempotency-Key` e `clientVersion`. Ver `docs/MATRIZ_CENARIOS_OFFLINE.md`.
+
+**Texto original do MOB-03, mantido como histórico. Pendência no backend (BE-05): idempotência.** Se a API gravar a ocorrência e a resposta se perder no caminho (queda de rede depois do commit), o app reenvia e o servidor cria um evento duplicado. O UUID vai na mensagem (`Ref. app`) para que duplicatas possam ser identificadas. A correção definitiva é o BE-05 aceitar `clientId` e responder com o evento já existente quando ele se repetir.
 
 ## Retenção e logout
 
@@ -120,5 +139,3 @@ As pendentes são mantidas no logout porque são trabalho que ainda não chegou 
 | Backend parado não mostra pendente como concluída | `offlineSync.test.ts` › backend parado (rede, 503, timeout) |
 | Schema versionado | `offlineDatabase.test.ts` › schema SQLite |
 | Token fora do SQLite | `offlineCache.test.ts` › o token nunca é gravado no arquivo SQLite |
-
-O vídeo de demonstração segue o roteiro em `docs/ROTEIRO_VIDEO_OFFLINE.md`.

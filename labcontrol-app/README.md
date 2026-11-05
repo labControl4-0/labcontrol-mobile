@@ -22,7 +22,11 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
 
    O app guarda o cache e as ocorrências offline num banco SQLite (`docs/SQLITE_SCHEMA.md`). Na web, o servidor precisa enviar os cabeçalhos `Cross-Origin-Embedder-Policy: credentialless` e `Cross-Origin-Opener-Policy: same-origin`. O `metro.config.js` já faz isso no `expo start`.
 
+   Sincronização, conflitos e cenários offline: `docs/MATRIZ_CENARIOS_OFFLINE.md`.
+
 4. Rodar os testes de sessão, armazenamento e offline
+
+   O teste ponta a ponta contra a API real (`npm run test:e2e`) fica desligado no `npm test`. Veja como rodar na matriz de cenários.
 
    ```bash
    npm test
