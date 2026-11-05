@@ -36,9 +36,12 @@ async function migrate(db: Database) {
 }
 
 async function runStartupMaintenance(db: Database) {
-  // Um envio interrompido (app fechado no meio) volta para a fila.
+  // Um envio interrompido (app fechado no meio) volta para a fila. A requisição
+  // pode ter chegado ao servidor, então o app confere antes de reenviar.
   await db.runAsync(
-    "UPDATE occurrences SET sync_status = 'pending', updated_at = ? WHERE sync_status = 'syncing'",
+    `UPDATE occurrences
+       SET sync_status = 'pending', needs_check = 1, next_attempt_at = NULL, updated_at = ?
+     WHERE sync_status = 'syncing'`,
     [new Date().toISOString()]
   );
 

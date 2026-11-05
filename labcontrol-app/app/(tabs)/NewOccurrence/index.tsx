@@ -1,6 +1,6 @@
 // Formulário de ocorrência de máquina. Grava primeiro no SQLite (funciona sem
 // rede) e depois tenta enviar. O resultado mostrado é o estado real gravado.
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -25,7 +25,11 @@ import {
   validateOccurrence,
   type FormErrors,
 } from "../../../lib/offline/occurrenceForm";
-import { createOccurrence, getOccurrence } from "../../../lib/offline/occurrenceRepository";
+import {
+  createOccurrence,
+  getOccurrence,
+  updateOccurrence,
+} from "../../../lib/offline/occurrenceRepository";
 import { notifySyncChanged, syncPendingOccurrences } from "../../../services/occurrenceSync";
 
 const param = (value: string | string[] | undefined) =>
@@ -45,11 +49,26 @@ export default function NewOccurrenceScreen() {
     [params.machineId, params.machineName, params.sectorId, params.sectorName]
   );
 
+  // Edição (MOB-04): só para ocorrências ainda não enviadas.
+  const editingId = param(params.occurrenceId);
+
   const [eventType, setEventType] = useState<string>("failure");
   const [description, setDescription] = useState("");
   const [occurredAtText, setOccurredAtText] = useState(() => formatLocalDateTime(new Date()));
   const [errors, setErrors] = useState<FormErrors>({});
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!editingId) return;
+    (async () => {
+      const session = await getAuthSession();
+      const current = session?.user.id ? await getOccurrence(session.user.id, editingId) : null;
+      if (!current) return;
+      setEventType(current.eventType);
+      setDescription(current.description);
+      setOccurredAtText(formatLocalDateTime(new Date(current.occurredAt)));
+    })().catch(() => undefined);
+  }, [editingId]);
 
   const handleSave = async () => {
     if (saving) return;
@@ -81,15 +100,40 @@ export default function NewOccurrenceScreen() {
         return;
       }
 
-      const created = await createOccurrence({ ...result.value, userId });
+      let occurrenceId: string;
+      if (editingId) {
+        const updated = await updateOccurrence(userId, editingId, {
+          eventType: result.value.eventType,
+          description: result.value.description,
+          occurredAt: result.value.occurredAt,
+        });
+        if (!updated) {
+          Toast.show({
+            type: "error",
+            text1: "Não foi possível editar",
+            text2: "A ocorrência já está sendo enviada ou já foi enviada.",
+          });
+          router.replace("/Occurrences" as any);
+          return;
+        }
+        occurrenceId = editingId;
+      } else {
+        occurrenceId = (await createOccurrence({ ...result.value, userId })).id;
+      }
       notifySyncChanged();
 
       // Tenta enviar na hora; sem rede ela continua pendente na fila.
-      await syncPendingOccurrences().catch(() => null);
-      const saved = await getOccurrence(userId, created.id);
+      await syncPendingOccurrences({ trigger: "save" }).catch(() => null);
+      const saved = await getOccurrence(userId, occurrenceId);
 
       if (saved?.syncStatus === "synced") {
         Toast.show({ type: "success", text1: "Ocorrência enviada ao servidor" });
+      } else if (saved?.syncStatus === "conflict") {
+        Toast.show({
+          type: "error",
+          text1: "Conflito com a versão do servidor",
+          text2: "Escolha qual versão manter na lista de ocorrências.",
+        });
       } else if (saved?.syncStatus === "failed") {
         Toast.show({
           type: "error",
@@ -140,7 +184,7 @@ export default function NewOccurrenceScreen() {
             <TouchableOpacity onPress={() => router.back()} accessibilityLabel="Voltar">
               <Ionicons name="arrow-back" size={22} color="#111827" />
             </TouchableOpacity>
-            <Text style={styles.title}>Nova ocorrência</Text>
+            <Text style={styles.title}>{editingId ? "Editar ocorrência" : "Nova ocorrência"}</Text>
             <View style={styles.headerSpacer} />
           </View>
 
@@ -218,7 +262,9 @@ export default function NewOccurrenceScreen() {
             {saving ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
-              <Text style={styles.buttonText}>Salvar ocorrência</Text>
+              <Text style={styles.buttonText}>
+                {editingId ? "Salvar alterações" : "Salvar ocorrência"}
+              </Text>
             )}
           </TouchableOpacity>
         </ScrollView>

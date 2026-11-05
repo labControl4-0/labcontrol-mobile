@@ -9,7 +9,8 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "test": "jest"
+    "test": "jest",
+    "test:e2e": "jest __tests__/e2e --runInBand"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -26,6 +27,7 @@
     "expo-image": "~3.0.11",
     "expo-image-picker": "~17.0.11",
     "expo-linking": "~8.0.12",
+    "expo-network": "~8.0.8",
     "expo-router": "~6.0.23",
     "expo-secure-store": "~15.0.8",
     "expo-splash-screen": "~31.0.13",

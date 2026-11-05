@@ -122,5 +122,6 @@ export const SYNC_STATUS_UI: Record<SyncStatus, { label: string; color: string; 
   pending: { label: "Pendente: ainda não enviada", color: "#B45309", icon: "time-outline" },
   syncing: { label: "Enviando...", color: "#2563EB", icon: "cloud-upload-outline" },
   synced: { label: "Enviada ao servidor", color: "#15803D", icon: "checkmark-circle" },
-  failed: { label: "Recusada pelo servidor", color: "#B91C1C", icon: "alert-circle" },
+  failed: { label: "Erro: recusada pelo servidor", color: "#B91C1C", icon: "alert-circle" },
+  conflict: { label: "Conflito: escolha qual versão manter", color: "#7C3AED", icon: "git-compare-outline" },
 };

@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   StyleSheet,
   Text,
@@ -19,6 +20,8 @@ import { SYNC_STATUS_UI, eventTypeLabel } from "../../../lib/offline/occurrenceF
 import {
   listOccurrences,
   requeueFailed,
+  resolveConflictKeepBoth,
+  resolveConflictKeepServer,
   type Occurrence,
 } from "../../../lib/offline/occurrenceRepository";
 import {
@@ -49,24 +52,73 @@ function syncMessage(result: SyncResult | null) {
       text2: `${result.remaining} ocorrência(s) continuam pendentes.`,
     };
   }
-  if (result.sent === 0 && result.failed === 0) {
+  const confirmed = result.sent + result.recovered;
+  if (confirmed === 0 && result.failed === 0 && result.conflicts === 0) {
     return { type: "info", text1: "Nada pendente para enviar" };
   }
+  const problems = [
+    result.failed > 0 ? `${result.failed} recusada(s) pelo servidor` : null,
+    result.conflicts > 0 ? `${result.conflicts} em conflito` : null,
+  ].filter(Boolean);
   return {
-    type: result.failed > 0 ? "error" : "success",
-    text1: `${result.sent} enviada(s)`,
-    text2: result.failed > 0 ? `${result.failed} recusada(s) pelo servidor.` : undefined,
+    type: problems.length > 0 ? "error" : "success",
+    text1: `${confirmed} confirmada(s) no servidor`,
+    text2: problems.length > 0 ? `${problems.join(", ")}.` : undefined,
   };
 }
 
-function OccurrenceCard({
-  item,
-  onRetry,
-}: {
-  item: Occurrence;
+type CardActions = {
   onRetry: (id: string) => void;
-}) {
+  onEdit: (item: Occurrence) => void;
+  onKeepServer: (item: Occurrence) => void;
+  onKeepBoth: (item: Occurrence) => void;
+};
+
+/** Mostra lado a lado o que está no aparelho e o que está no servidor. */
+function ConflictPanel({ item, actions }: { item: Occurrence; actions: CardActions }) {
+  const server = item.conflict?.server;
+
+  return (
+    <View style={styles.conflict}>
+      <Text style={styles.conflictTitle}>O servidor tem outra versão desta ocorrência</Text>
+
+      <Text style={styles.conflictLabel}>NO APARELHO</Text>
+      <Text style={styles.conflictText}>
+        {eventTypeLabel(item.eventType)}: {item.description}
+      </Text>
+
+      <Text style={styles.conflictLabel}>NO SERVIDOR</Text>
+      <Text style={styles.conflictText}>
+        {server
+          ? `${server.eventType ? eventTypeLabel(server.eventType) : "?"}: ${server.description ?? "—"}`
+          : "O servidor não informou a versão dele."}
+      </Text>
+
+      <View style={styles.conflictActions}>
+        <TouchableOpacity
+          style={styles.conflictButton}
+          onPress={() => actions.onKeepServer(item)}
+          accessibilityRole="button"
+        >
+          <Text style={styles.conflictButtonText}>Manter a do servidor</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.conflictButton, styles.conflictButtonPrimary]}
+          onPress={() => actions.onKeepBoth(item)}
+          accessibilityRole="button"
+        >
+          <Text style={[styles.conflictButtonText, styles.conflictButtonTextPrimary]}>
+            Enviar a minha como nova
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+function OccurrenceCard({ item, actions }: { item: Occurrence; actions: CardActions }) {
   const status = SYNC_STATUS_UI[item.syncStatus];
+  const canEdit = item.syncStatus === "pending" || item.syncStatus === "failed";
 
   return (
     <View style={styles.card}>
@@ -88,11 +140,27 @@ function OccurrenceCard({
         <Text style={styles.cardError}>Último erro: {item.lastError}</Text>
       ) : null}
 
-      {item.syncStatus === "failed" ? (
-        <TouchableOpacity onPress={() => onRetry(item.id)} accessibilityRole="button">
-          <Text style={styles.retry}>Tentar enviar de novo</Text>
-        </TouchableOpacity>
+      {item.syncStatus === "pending" && item.retryCount > 0 ? (
+        <Text style={styles.cardMeta}>
+          {item.retryCount} tentativa(s) sem sucesso.
+          {item.nextAttemptAt ? ` Próxima automática após ${formatDate(new Date(item.nextAttemptAt).toISOString())}.` : ""}
+        </Text>
       ) : null}
+
+      {item.syncStatus === "conflict" ? <ConflictPanel item={item} actions={actions} /> : null}
+
+      <View style={styles.cardActions}>
+        {item.syncStatus === "failed" ? (
+          <TouchableOpacity onPress={() => actions.onRetry(item.id)} accessibilityRole="button">
+            <Text style={styles.retry}>Tentar enviar de novo</Text>
+          </TouchableOpacity>
+        ) : null}
+        {canEdit ? (
+          <TouchableOpacity onPress={() => actions.onEdit(item)} accessibilityRole="button">
+            <Text style={styles.retry}>Editar</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
 
       <Text style={styles.cardId}>Ref.: {item.id}</Text>
     </View>
@@ -127,7 +195,7 @@ export default function OccurrencesScreen() {
   const handleSyncNow = async () => {
     setSyncing(true);
     try {
-      const result = await syncPendingOccurrences();
+      const result = await syncPendingOccurrences({ trigger: "manual" });
       Toast.show(syncMessage(result) as any);
     } finally {
       setSyncing(false);
@@ -143,7 +211,58 @@ export default function OccurrencesScreen() {
     await handleSyncNow();
   };
 
+  const actions: CardActions = {
+    onRetry: handleRetry,
+    onEdit: (item) =>
+      router.push({
+        pathname: "/NewOccurrence",
+        params: {
+          occurrenceId: item.id,
+          machineId: item.machineId,
+          machineName: item.machineName,
+          sectorId: item.sectorId,
+          sectorName: item.sectorName ?? "",
+        },
+      } as any),
+    onKeepServer: (item) =>
+      Alert.alert(
+        "Manter a versão do servidor?",
+        "A sua edição feita no aparelho será descartada. A ocorrência do servidor continua como está.",
+        [
+          { text: "Cancelar", style: "cancel" },
+          {
+            text: "Manter a do servidor",
+            style: "destructive",
+            onPress: async () => {
+              const session = await getAuthSession();
+              if (session?.user.id) await resolveConflictKeepServer(session.user.id, item.id);
+              notifySyncChanged();
+              Toast.show({ type: "success", text1: "Conflito resolvido", text2: "Mantida a versão do servidor." });
+            },
+          },
+        ]
+      ),
+    onKeepBoth: (item) =>
+      Alert.alert(
+        "Enviar a sua versão como nova?",
+        "O servidor fica com as duas ocorrências: a que já estava lá e a sua versão, como um registro novo.",
+        [
+          { text: "Cancelar", style: "cancel" },
+          {
+            text: "Enviar como nova",
+            onPress: async () => {
+              const session = await getAuthSession();
+              if (session?.user.id) await resolveConflictKeepBoth(session.user.id, item.id);
+              notifySyncChanged();
+              await handleSyncNow();
+            },
+          },
+        ]
+      ),
+  };
+
   const unsynced = items.filter((i) => i.syncStatus !== "synced").length;
+  const conflicts = items.filter((i) => i.syncStatus === "conflict").length;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -165,6 +284,7 @@ export default function OccurrencesScreen() {
           {unsynced > 0
             ? `${unsynced} ocorrência(s) ainda não enviada(s) ao servidor.`
             : "Todas as ocorrências foram enviadas."}
+          {conflicts > 0 ? ` ${conflicts} em conflito: escolha qual versão manter.` : ""}
         </Text>
         <TouchableOpacity
           style={[styles.syncButton, syncing && styles.syncButtonDisabled]}
@@ -187,7 +307,7 @@ export default function OccurrencesScreen() {
           data={items}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
-          renderItem={({ item }) => <OccurrenceCard item={item} onRetry={handleRetry} />}
+          renderItem={({ item }) => <OccurrenceCard item={item} actions={actions} />}
           ListEmptyComponent={
             <Text style={styles.empty}>
               Nenhuma ocorrência registrada. Toque em + e escolha uma máquina.
@@ -254,4 +374,26 @@ const styles = StyleSheet.create({
   cardError: { fontSize: 11, color: "#B91C1C" },
   retry: { fontSize: 12, fontWeight: "700", color: "#2563EB", marginTop: 2 },
   cardId: { fontSize: 10, color: "#9CA3AF", marginTop: 2 },
+  cardActions: { flexDirection: "row", gap: 16 },
+  conflict: {
+    backgroundColor: "#F5F3FF",
+    borderRadius: 12,
+    padding: 12,
+    gap: 4,
+    marginTop: 4,
+  },
+  conflictTitle: { fontSize: 12, fontWeight: "700", color: "#5B21B6", marginBottom: 4 },
+  conflictLabel: { fontSize: 10, fontWeight: "800", color: "#6B7280", marginTop: 4 },
+  conflictText: { fontSize: 13, color: "#111827", lineHeight: 18 },
+  conflictActions: { flexDirection: "row", gap: 8, marginTop: 10, flexWrap: "wrap" },
+  conflictButton: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#7C3AED",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  conflictButtonPrimary: { backgroundColor: "#7C3AED" },
+  conflictButtonText: { fontSize: 12, fontWeight: "700", color: "#7C3AED" },
+  conflictButtonTextPrimary: { color: "#FFFFFF" },
 });
