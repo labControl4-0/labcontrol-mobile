@@ -24,6 +24,8 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
 
    Sincronização, conflitos e cenários offline: `docs/MATRIZ_CENARIOS_OFFLINE.md`.
 
+   Notificações, EAS, Firebase e development build Android: `docs/PUSH_NOTIFICATIONS.md`. O `google-services.json` e a chave FCM V1 nunca entram no Git.
+
 4. Rodar os testes de sessão, armazenamento e offline
 
    O teste ponta a ponta contra a API real (`npm run test:e2e`) fica desligado no `npm test`. Veja como rodar na matriz de cenários.

@@ -116,7 +116,7 @@ $env:E2E_DB_CONNECTION = "Host=127.0.0.1;Port=55433;Database=labcontroldb;Userna
 npm run test:e2e
 ```
 
-O backend atual é ASP.NET Core com Postgres. A issue cita Spring porque o BE-05/BE-06 são da disciplina de Java/Spring. Se a API migrar mantendo as rotas, o mesmo teste roda apontando para ela.
+O backend do projeto é a API em ASP.NET Core com Postgres e continua assim. A issue cita Spring porque o BE-05/BE-06 vêm da disciplina de Java/Spring; a evidência de "dado persistido" é feita na API .NET.
 
 ### Resultado registrado (4/11/2026, banco recém-criado, dados sintéticos)
 

@@ -15,6 +15,7 @@ import {
 import Toast from "react-native-toast-message";
 
 import { login } from "../../services/authService";
+import { setupPushNotifications } from "../../services/pushRegistration";
 
 export default function Index() {
   const router = useRouter();
@@ -37,6 +38,10 @@ export default function Index() {
 
       // login() já persiste a sessão (token + usuário).
       await login({ email: email.trim(), password });
+
+      // Se a permissão já foi dada antes, associa este aparelho ao usuário que
+      // acabou de entrar. Não mostra pedido de permissão nem bloqueia o login.
+      setupPushNotifications({ prompt: false }).catch(() => undefined);
 
       Toast.show({
         type: "success",

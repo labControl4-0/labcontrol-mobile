@@ -28,6 +28,7 @@ import { updateUserPhoto } from "../../../lib/users";
 import Toast from "react-native-toast-message";
 import { userCache } from "../../../lib/userCache";
 import { countUnsynced } from "../../../lib/offline/occurrenceRepository";
+import { unregisterPushDevice } from "../../../services/pushRegistration";
 
 // Foto de perfil fica no cache do próprio usuário (ver docs/POLITICA_DE_DADOS.md).
 const PROFILE_IMAGE_KEY = "profileImageUri";
@@ -179,6 +180,8 @@ export default function ProfileSettingsScreen() {
         text: "Sair",
         style: "destructive",
         onPress: async () => {
+          // Remove o aparelho do usuário no servidor enquanto a sessão ainda vale.
+          await unregisterPushDevice();
           await clearAuthSession();
 
           if (Platform.OS === "web") {
