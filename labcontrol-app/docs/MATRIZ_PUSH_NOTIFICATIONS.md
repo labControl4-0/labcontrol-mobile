@@ -22,7 +22,7 @@ Use uma conta e eventos sintéticos nos testes. O destino sempre é a tela inter
   "origem": "machine-events"
 }</pre>
 
-machineId complementa os campos mínimos da issue BE-07 porque a API existente só oferece consulta autorizada por máquina (GET /api/machine-events/machine/{machineId}). O app usa avisoId para selecionar o evento dentro dessa resposta; ele não confia no ID para conceder acesso.
+machineId complementa os campos mínimos da issue BE-07 porque a API existente só oferece consulta autorizada por máquina (GET /api/machine-events/machine/{machineId}). avisoId deve ser o ID do MachineEvent, e categoria deve corresponder ao eventType. O app usa avisoId para selecionar o evento dentro da resposta autorizada; não confia no ID para conceder acesso.
 
 ## Roteiro de evidência manual
 
@@ -40,4 +40,4 @@ Anexe vídeo do recebimento → clique → detalhe e um registro sanitizado da a
 
 - BE-07 (#73) ainda está aberto; o envio real e a remoção no backend precisam ser verificados.
 - A API do projeto é ASP.NET Core; alinhar com BE-07 o campo machineId e a rota que enviará a notificação.
-- MOB-05 ainda depende de EAS/Firebase e build Android para obter token real e comprovar push remoto.
+- MOB-05 já define o projectId do EAS; ainda são necessários Firebase/FCM configurados, um development build Android e o BE-07 para comprovar push remoto.
