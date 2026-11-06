@@ -52,7 +52,7 @@ function SummaryCard({
   icon,
 }: {
   title: string;
-  value: number;
+  value: number | string;
   icon: keyof typeof Ionicons.glyphMap;
 }) {
   return (
@@ -123,7 +123,7 @@ export default function DashboardScreen() {
     [dashboardData]
   );
 
-  const openEvents = dashboardData?.events.filter((event) => !event.resolvedAt).length ?? 0;
+  const openEvents = dashboardData?.events?.filter((event) => !event.resolvedAt).length;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -186,13 +186,13 @@ export default function DashboardScreen() {
               />
             ) : null}
             <Text style={styles.syncText}>
-              Última atualização: {formatDateTime(dashboardData.syncedAt)}
+              Última consulta do catálogo: {formatDateTime(dashboardData.syncedAt)}
             </Text>
 
             <View style={styles.summaryGrid}>
               <SummaryCard title="Plantas" value={dashboardData.plants.length} icon="business-outline" />
               <SummaryCard title="Máquinas" value={dashboardData.machines.length} icon="hardware-chip-outline" />
-              <SummaryCard title="Ocorrências abertas" value={openEvents} icon="alert-circle-outline" />
+              <SummaryCard title="Ocorrências abertas" value={openEvents ?? "—"} icon="alert-circle-outline" />
             </View>
 
             <View style={styles.sectionHeader}>
@@ -207,7 +207,23 @@ export default function DashboardScreen() {
               </TouchableOpacity>
             </View>
 
-            {recentEvents.length === 0 ? (
+            {dashboardData.events === null ? (
+              <View style={styles.errorCard} accessibilityRole="alert">
+                <Ionicons name="cloud-offline-outline" size={22} color="#B91C1C" />
+                <Text style={styles.errorText}>
+                  Eventos indisponíveis. {dashboardData.eventsError ?? "Tente atualizar novamente."}
+                </Text>
+                <TouchableOpacity
+                  style={styles.retryButton}
+                  onPress={() => void loadDashboard()}
+                  accessibilityRole="button"
+                  accessibilityLabel="Tentar carregar eventos novamente"
+                  hitSlop={8}
+                >
+                  <Text style={styles.retryText}>Tentar novamente</Text>
+                </TouchableOpacity>
+              </View>
+            ) : recentEvents.length === 0 ? (
               <View style={styles.emptyCard} accessibilityRole="summary">
                 <Ionicons name="checkmark-circle-outline" size={28} color="#16A34A" />
                 <Text style={styles.emptyTitle}>Nenhum evento registrado</Text>
