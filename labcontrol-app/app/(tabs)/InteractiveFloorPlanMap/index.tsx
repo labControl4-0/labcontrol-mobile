@@ -24,8 +24,8 @@ import type { Plant, Sector, SectorPoint, Machine as ApiMachine, BBox } from "..
 type MachineStatus = "active" | "warning" | "error" | "idle" | "unknown";
 type Machine = Omit<ApiMachine, "status" | "sectorId"> & { status: string; sectorId: string | null };
 
-function getStatusKey(status: string): MachineStatus {
-  const normalized = status.trim().toLocaleLowerCase("pt-BR");
+function getStatusKey(status: string | null | undefined): MachineStatus {
+  const normalized = (status ?? "").trim().toLocaleLowerCase("pt-BR");
   if (["active", "ativo", "operacional", "operating"].includes(normalized)) return "active";
   if (["warning", "alerta", "atenção", "attention"].includes(normalized)) return "warning";
   if (["error", "erro", "falha", "fault"].includes(normalized)) return "error";
@@ -36,7 +36,7 @@ function getStatusKey(status: string): MachineStatus {
 function formatDateTime(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "data indisponível";
-  return date.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  return date.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
@@ -66,7 +66,7 @@ const STATUS_LABEL: Record<MachineStatus, string> = {
   active: "Ativo", warning: "Alerta", error: "Falha", idle: "Inativo", unknown: "Desconhecido",
 };
 
-// ─── HELPERS// ─── HELPERS ─────────────────────────────────────────────────────────────────
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
 function hexToRgba(hex: string, alpha: number): string {
   const h = hex.replace("#", "");
   const r = parseInt(h.slice(0, 2), 16);
@@ -236,8 +236,14 @@ function MachineModal({
 
   return (
     <Modal transparent animationType="slide" visible={visible} onRequestClose={onClose}>
-      <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={onClose}>
-        <View style={s.sheet}>
+      <View style={s.overlay}>
+        <TouchableOpacity
+          style={s.dismissArea}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="Fechar detalhes da máquina"
+        />
+        <View style={s.sheet} accessibilityViewIsModal>
           <View style={s.handle} />
 
           <View style={s.sheetHeader}>
@@ -248,7 +254,7 @@ function MachineModal({
             <View style={[s.badge, { borderColor: color, backgroundColor: hexToRgba(color, 0.1) }]}>
               <View style={[s.badgeDot, { backgroundColor: color }]} />
               <Text style={[s.badgeText, { color }]}>
-                {STATUS_LABEL[machine.status] ?? machine.status}
+                {STATUS_LABEL[statusKey]}
               </Text>
             </View>
           </View>
@@ -270,11 +276,11 @@ function MachineModal({
             ))}
           </View>
 
-          <TouchableOpacity style={s.closeBtn} onPress={onClose}>
+          <TouchableOpacity style={s.closeBtn} onPress={onClose} accessibilityRole="button" accessibilityLabel="Fechar detalhes da máquina">
             <Text style={s.closeBtnText}>Fechar</Text>
           </TouchableOpacity>
         </View>
-      </TouchableOpacity>
+      </View>
     </Modal>
   );
 }
@@ -581,7 +587,13 @@ export default function FloorPlanScreen() {
         )}
 
         {/* Legend toggle */}
-        <TouchableOpacity style={s.legendBtn} onPress={() => setLegendOn((v) => !v)}>
+        <TouchableOpacity
+          style={s.legendBtn}
+          onPress={() => setLegendOn((v) => !v)}
+          accessibilityRole="button"
+          accessibilityLabel={legendOn ? "Ocultar legenda do mapa" : "Mostrar legenda do mapa"}
+          accessibilityState={{ expanded: legendOn }}
+        >
           <Text style={{ color: C.sectorLabel, fontSize: 15 }}>⬡</Text>
         </TouchableOpacity>
 
@@ -654,8 +666,8 @@ const s = StyleSheet.create({
     position:        "absolute",
     bottom:          20,
     left:            16,
-    width:           38,
-    height:          38,
+    width:           44,
+    height:          44,
     borderRadius:    8,
     backgroundColor: C.panel,
     borderWidth:     1,
@@ -680,6 +692,7 @@ const s = StyleSheet.create({
   legendLabel: { color: C.white, fontSize: 12 },
 
   overlay: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.6)" },
+  dismissArea: { flex: 1 },
   sheet: {
     backgroundColor:      C.panel,
     borderTopLeftRadius:  20,
