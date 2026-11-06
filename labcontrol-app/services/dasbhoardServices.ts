@@ -12,6 +12,7 @@ export type DashboardMachine = Machine & {
 export type DashboardEvent = MachineEvent & {
   machineName: string;
   plantName: string;
+  plantId: string;
 };
 
 export type DashboardData = {
@@ -57,6 +58,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       ...event,
       machineName: machines[index].name,
       plantName: machines[index].plantName,
+      plantId: machines[index].plantId,
     }))
   );
 
