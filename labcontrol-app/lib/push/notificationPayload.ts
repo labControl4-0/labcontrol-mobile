@@ -64,5 +64,5 @@ export function routeForMachineEventPush(value: unknown): Href | null {
       machineId: payload.machineId,
       origem: payload.origem,
     },
-  };
+  } as any;
 }
