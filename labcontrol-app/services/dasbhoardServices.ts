@@ -28,8 +28,8 @@ export type DashboardData = {
 
 /**
  * Monta o resumo usando apenas contratos existentes na API .NET:
- * plantas, máquinas e eventos por máquina. Qualquer falha de consulta é
- * propagada para a tela; falhas nunca são convertidas em listas vazias.
+ * plantas e máquinas com cache; eventos são consultados por máquina. Falhas
+ * no catálogo são propagadas, e falhas de eventos são representadas por null.
  */
 export async function getDashboardData(): Promise<DashboardData> {
   const cachedDates: string[] = [];
