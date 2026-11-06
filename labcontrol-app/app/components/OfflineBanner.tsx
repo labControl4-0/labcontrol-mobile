@@ -22,13 +22,13 @@ export function OfflineBanner({
   onRetry?: () => void;
 }) {
   return (
-    <View style={styles.banner} accessibilityRole="alert">
+    <View style={styles.banner} accessibilityRole="summary" accessibilityLiveRegion="polite">
       <Ionicons name="cloud-offline-outline" size={18} color="#92400E" />
       <Text style={styles.text}>
-        Sem conexão com o servidor. Mostrando dados salvos em {formatCachedAt(cachedAt)}.
+        Parte do catálogo veio da cópia salva no dispositivo em {formatCachedAt(cachedAt)}.
       </Text>
       {onRetry ? (
-        <TouchableOpacity onPress={onRetry} accessibilityRole="button">
+        <TouchableOpacity onPress={onRetry} accessibilityRole="button" accessibilityLabel="Tentar atualizar o catálogo">
           <Text style={styles.retry}>Tentar de novo</Text>
         </TouchableOpacity>
       ) : null}
