@@ -175,6 +175,39 @@ describe("recebimento e interação", () => {
     stop();
   });
 
+  it("abre o evento ao tocar no push com o app em segundo plano", async () => {
+    const router = { push: jest.fn() };
+    const state = getMockState();
+    const onResponse = jest.fn();
+    const stop = startPushNavigation(router, {
+      readSession: async () => ({ token: "token-sintetico", user: { id: "usuario-teste" } }),
+      onResponse,
+    });
+
+    state.response(makeResponse(VALID_PAYLOAD));
+    await flushAsyncWork();
+
+    expect(router.push).toHaveBeenCalledWith(routeForMachineEventPush(VALID_PAYLOAD));
+    expect(onResponse).toHaveBeenCalledWith("opened");
+    stop();
+  });
+
+  it("não navega duas vezes quando o response inicial e o listener recebem o mesmo clique", async () => {
+    const router = { push: jest.fn() };
+    const state = getMockState();
+    const sameResponse = makeResponse(VALID_PAYLOAD, "same-push");
+    state.lastResponse = sameResponse;
+
+    const stop = startPushNavigation(router, {
+      readSession: async () => ({ token: "token-sintetico", user: { id: "usuario-teste" } }),
+    });
+    state.response(sameResponse);
+    await flushAsyncWork();
+
+    expect(router.push).toHaveBeenCalledTimes(1);
+    stop();
+  });
+
   it("não abre rota para clique com payload inválido", async () => {
     const router = { push: jest.fn() };
     const state = getMockState();
