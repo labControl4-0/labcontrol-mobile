@@ -1,154 +1,70 @@
+import type { Machine, Plant } from "../types/blueprint";
+import {
+  getMachinesByPlantCached,
+  getPlantsCached,
+} from "./catalogService";
+import { getMachineEvents, type MachineEvent } from "./notificationServices";
 
-
-import { apiFetch } from "./api";
-
-type User = {
-  id: string;
-  name?: string;
-  email?: string;
+export type DashboardMachine = Machine & {
+  plantName: string;
 };
 
-type Plant = {
-  id: string;
-  name?: string;
-};
-
-type Machine = {
-  id: string;
-  name?: string;
-  plantId?: string;
-};
-
-type MachineMetric = {
-  id?: string;
-  machineId?: string;
-  temperature?: number;
-  temp?: number;
-  energyConsumption?: number;
-  energy?: number;
-  power?: number;
-  createdAt?: string;
-};
-
-type MachineEvent = {
-  id: string;
-  machineId?: string;
-  title?: string;
-  description?: string;
-  resolved?: boolean;
-  isResolved?: boolean;
-  createdAt?: string;
+export type DashboardEvent = MachineEvent & {
+  machineName: string;
+  plantName: string;
 };
 
 export type DashboardData = {
-  totalEnergy: number;
-  avgTemp: number;
-  registeredUsers: number;
-  activeAlerts: number;
-  metrics: MachineMetric[];
-  events: MachineEvent[];
+  plants: Plant[];
+  machines: DashboardMachine[];
+  events: DashboardEvent[];
+  /** Horário em que a tela terminou de consultar os contratos disponíveis. */
+  syncedAt: string;
+  /** Presente quando pelo menos parte do catálogo veio do cache local. */
+  cachedCatalogAt?: string;
 };
 
-function getMetricEnergy(metric: MachineMetric) {
-  return metric.energyConsumption ?? metric.energy ?? metric.power ?? 0;
-}
-
-function getMetricTemperature(metric: MachineMetric) {
-  return metric.temperature ?? metric.temp ?? null;
-}
-
-function isEventActive(event: MachineEvent) {
-  if (typeof event.resolved === "boolean") {
-    return !event.resolved;
-  }
-
-  if (typeof event.isResolved === "boolean") {
-    return !event.isResolved;
-  }
-
-  return true;
-}
-
+/**
+ * Monta o resumo usando apenas contratos existentes na API .NET:
+ * plantas, máquinas e eventos por máquina. Qualquer falha de consulta é
+ * propagada para a tela; falhas nunca são convertidas em listas vazias.
+ */
 export async function getDashboardData(): Promise<DashboardData> {
-  const users = (await apiFetch("/users")) as User[];
-  const plants = (await apiFetch("/plants")) as Plant[];
+  const cachedDates: string[] = [];
+  const track = <T,>(result: { data: T; source: string; cachedAt?: string }) => {
+    if (result.source === "cache" && result.cachedAt) cachedDates.push(result.cachedAt);
+    return result.data;
+  };
 
-  if (!plants.length) {
-    return {
-      totalEnergy: 0,
-      avgTemp: 0,
-      registeredUsers: users.length,
-      activeAlerts: 0,
-      metrics: [],
-      events: [],
-    };
-  }
-
-  const machinesResults = await Promise.all(
-    plants.map((plant) =>
-      apiFetch(`/machines/plant/${plant.id}`).catch((error) => {
-        console.log(`Erro ao buscar máquinas da planta ${plant.id}:`, error.message);
-        return [];
-      })
-    )
+  const plantsResult = await getPlantsCached();
+  const plants = track(plantsResult) as Plant[];
+  const machineGroups = await Promise.all(
+    plants.map(async (plant) => ({
+      plant,
+      machines: track(await getMachinesByPlantCached(plant.id)) as Machine[],
+    }))
   );
 
-  const machines = machinesResults.flat() as Machine[];
-
-  if (!machines.length) {
-    return {
-      totalEnergy: 0,
-      avgTemp: 0,
-      registeredUsers: users.length,
-      activeAlerts: 0,
-      metrics: [],
-      events: [],
-    };
-  }
-
-  const metricsResults = await Promise.all(
-    machines.map((machine) =>
-      apiFetch(`/machine-metrics/machine/${machine.id}`).catch((error) => {
-        console.log(`Erro ao buscar métricas da máquina ${machine.id}:`, error.message);
-        return [];
-      })
-    )
+  const machines: DashboardMachine[] = machineGroups.flatMap(({ plant, machines: items }) =>
+    items.map((machine) => ({ ...machine, plantName: plant.name }))
   );
 
-  const eventsResults = await Promise.all(
-    machines.map((machine) =>
-      apiFetch(`/machine-events/machine/${machine.id}`).catch((error) => {
-        console.log(`Erro ao buscar eventos da máquina ${machine.id}:`, error.message);
-        return [];
-      })
-    )
+  const eventGroups = await Promise.all(
+    machines.map((machine) => getMachineEvents(machine.id))
   );
-
-  const metrics = metricsResults.flat() as MachineMetric[];
-  const events = eventsResults.flat() as MachineEvent[];
-
-  const totalEnergy = metrics.reduce(
-    (sum, metric) => sum + getMetricEnergy(metric),
-    0
+  const events: DashboardEvent[] = eventGroups.flatMap((items, index) =>
+    items.map((event) => ({
+      ...event,
+      machineName: machines[index].name,
+      plantName: machines[index].plantName,
+    }))
   );
-
-  const temperatures = metrics
-    .map(getMetricTemperature)
-    .filter((value): value is number => typeof value === "number");
-
-  const avgTemp =
-    temperatures.length > 0
-      ? temperatures.reduce((sum, temp) => sum + temp, 0) / temperatures.length
-      : 0;
-
-  const activeAlerts = events.filter(isEventActive).length;
 
   return {
-    totalEnergy,
-    avgTemp,
-    registeredUsers: users.length,
-    activeAlerts,
-    metrics,
+    plants,
+    machines,
     events,
+    syncedAt: new Date().toISOString(),
+    cachedCatalogAt: cachedDates.sort()[0],
   };
 }
