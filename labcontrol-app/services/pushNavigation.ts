@@ -1,5 +1,6 @@
 import * as Notifications from "expo-notifications";
 import type { Href } from "expo-router";
+import { Platform } from "react-native";
 
 import { getAuthSession, type AuthSession } from "../lib/auth";
 import {
@@ -59,6 +60,8 @@ export function startPushNavigation(
   router: PushRouter,
   options: PushNavigationOptions = {}
 ): () => void {
+  if (Platform.OS !== "android" && Platform.OS !== "ios") return () => undefined;
+
   const notifications = options.notifications ?? Notifications;
   const readSession = options.readSession ?? getAuthSession;
   const recentResponses = new Map<string, number>();
