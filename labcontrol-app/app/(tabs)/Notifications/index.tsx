@@ -1,57 +1,84 @@
 import React from "react";
 import {
-  SafeAreaView,
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { BottomNavBar } from "../../components/BottomNavBar";
+import { PushSetupCard } from "../../components/PushSetupCard";
 
-const notifications = [
+type Tone = "warning" | "success" | "info" | "error";
+
+type NotificationItem = {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  subtitle: string;
+  time: string;
+  tone: Tone;
+};
+
+const notifications: NotificationItem[] = [
   {
-    icon: "thermometer",
-    title: "Temperature rise detected",
-    subtitle: "Lab A1 is now at 27.4°C. Threshold is 26°C.",
-    time: "5 min ago",
+    icon: "alert-circle-outline",
+    title: "Máquina requer atenção",
+    subtitle: "Torno CNC 01 apresentou vibração acima do limite.",
+    time: "2 min atrás",
     tone: "warning",
   },
   {
-    icon: "cog-outline",
-    title: "Machine 04 resumed operation",
-    subtitle: "The cooling unit in Zone 3 completed auto-recovery.",
-    time: "12 min ago",
-    tone: "success",
+    icon: "close-circle-outline",
+    title: "Falha detectada",
+    subtitle: "Impressora 3D Ender 3 interrompeu a operação.",
+    time: "8 min atrás",
+    tone: "error",
   },
   {
-    icon: "flash-outline",
-    title: "Energy spike recorded",
-    subtitle: "Main diagnostics rack consumed 12% more power than usual.",
-    time: "26 min ago",
+    icon: "construct-outline",
+    title: "Manutenção programada",
+    subtitle: "Fresadora Industrial será inspecionada amanhã.",
+    time: "30 min atrás",
     tone: "info",
   },
   {
-    icon: "alert-circle-outline",
-    title: "Humidity control check",
-    subtitle: "Humidity remained stable in the sterile lab corridor.",
-    time: "45 min ago",
+    icon: "checkmark-circle-outline",
+    title: "Problema resolvido",
+    subtitle: "Esteira de Separação voltou a operar normalmente.",
+    time: "1h atrás",
     tone: "success",
   },
   {
-    icon: "hardware-chip-outline",
-    title: "Machine maintenance reminder",
-    subtitle: "Calibrator Unit 2 is due for preventive maintenance today.",
-    time: "1 h ago",
+    icon: "thermometer-outline",
+    title: "Temperatura elevada",
+    subtitle: "Router CNC atingiu 78°C.",
+    time: "2h atrás",
     tone: "warning",
+  },
+  {
+    icon: "water-outline",
+    title: "Umidade crítica",
+    subtitle: "Sensor detectou umidade acima do recomendado.",
+    time: "3h atrás",
+    tone: "warning",
+  },
+  {
+    icon: "checkmark-done-circle-outline",
+    title: "Todos os sistemas operacionais",
+    subtitle: "Lab de Automação funcionando normalmente.",
+    time: "4h atrás",
+    tone: "success",
   },
 ];
 
-function NotificationCard({ item }: any) {
+function NotificationCard({ item }: { item: NotificationItem }) {
   const iconColor =
-    item.tone === "warning"
+    item.tone === "error"
+      ? "#DC2626"
+      : item.tone === "warning"
       ? "#F59E0B"
       : item.tone === "success"
       ? "#16A34A"
@@ -59,11 +86,20 @@ function NotificationCard({ item }: any) {
 
   return (
     <View style={styles.card}>
-      <View style={[styles.iconBox, { backgroundColor: `${iconColor}18` }]}>
-        <Ionicons name={item.icon} size={20} color={iconColor} />
+      <View
+        style={[
+          styles.iconContainer,
+          { backgroundColor: `${iconColor}15` },
+        ]}
+      >
+        <Ionicons
+          name={item.icon}
+          size={22}
+          color={iconColor}
+        />
       </View>
 
-      <View style={styles.cardBody}>
+      <View style={styles.cardContent}>
         <Text style={styles.cardTitle}>{item.title}</Text>
         <Text style={styles.cardSubtitle}>{item.subtitle}</Text>
         <Text style={styles.cardTime}>{item.time}</Text>
@@ -75,41 +111,99 @@ function NotificationCard({ item }: any) {
 export default function NotificationsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ from?: string }>();
-  const backRoute = params.from === "profile" ? "/UserProfileSettings" : "/Dashboard";
+
+  const backRoute =
+    params.from === "profile"
+      ? "/UserProfileSettings"
+      : "/Dashboard";
+
+  const warningCount = notifications.filter(
+    (n) => n.tone === "warning"
+  ).length;
+
+  const errorCount = notifications.filter(
+    (n) => n.tone === "error"
+  ).length;
 
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView
-        showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.push(backRoute)}>
-            <Ionicons name="arrow-back" size={22} color="#111827" />
+          <TouchableOpacity
+            onPress={() => router.push(backRoute as any)}
+          >
+            <Ionicons
+              name="arrow-back"
+              size={24}
+              color="#111827"
+            />
           </TouchableOpacity>
 
-          <Text style={styles.headerTitle}>Notifications</Text>
+          <Text style={styles.headerTitle}>
+            Notifications
+          </Text>
 
-          <View style={styles.headerRight}>
-            <MaterialCommunityIcons name="bell-badge-outline" size={20} color="#2563EB" />
-          </View>
+          <MaterialCommunityIcons
+            name="bell-badge-outline"
+            size={22}
+            color="#2563EB"
+          />
         </View>
 
         <Text style={styles.description}>
-          Live alerts from the dashboard, temperature sensors, and machine status.
+          Acompanhe alertas, falhas, manutenção e eventos
+          importantes das máquinas em tempo real.
         </Text>
 
+        <PushSetupCard />
+
         <View style={styles.summaryCard}>
-          <Text style={styles.summaryTitle}>Today</Text>
-          <Text style={styles.summaryValue}>5 active notifications</Text>
+          <Text style={styles.summaryLabel}>
+            RESUMO DE HOJE
+          </Text>
+
+          <Text style={styles.summaryValue}>
+            {notifications.length} notificações
+          </Text>
+
+          <View style={styles.summaryStats}>
+            <View style={styles.stat}>
+              <View
+                style={[
+                  styles.dot,
+                  { backgroundColor: "#DC2626" },
+                ]}
+              />
+              <Text style={styles.statText}>
+                {errorCount} erros
+              </Text>
+            </View>
+
+            <View style={styles.stat}>
+              <View
+                style={[
+                  styles.dot,
+                  { backgroundColor: "#F59E0B" },
+                ]}
+              />
+              <Text style={styles.statText}>
+                {warningCount} alertas
+              </Text>
+            </View>
+          </View>
         </View>
 
-        <View style={styles.list}>
+        <View style={styles.notificationsList}>
           {notifications.map((item, index) => (
-            <NotificationCard key={index} item={item} />
+            <NotificationCard
+              key={index}
+              item={item}
+            />
           ))}
         </View>
-
       </ScrollView>
 
       <BottomNavBar activeTab="notifications" />
@@ -122,85 +216,119 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#F3F4F6",
   },
+
   scrollContent: {
     paddingHorizontal: 22,
-    paddingTop: 14,
-    paddingBottom: 132,
+    paddingTop: 16,
+    paddingBottom: 120,
   },
+
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 18,
   },
+
   headerTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  headerRight: {
-    width: 24,
-    alignItems: "flex-end",
-  },
-  description: {
-    fontSize: 13,
-    lineHeight: 20,
-    color: "#6B7280",
-    marginBottom: 14,
-  },
-  summaryCard: {
-    backgroundColor: "#fff",
-    borderRadius: 18,
-    padding: 16,
-    marginBottom: 18,
-  },
-  summaryTitle: {
-    fontSize: 12,
-    color: "#9CA3AF",
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-  },
-  summaryValue: {
-    marginTop: 6,
     fontSize: 20,
     fontWeight: "700",
     color: "#111827",
   },
-  list: {
+
+  description: {
+    fontSize: 13,
+    lineHeight: 20,
+    color: "#6B7280",
+    marginBottom: 18,
+  },
+
+  summaryCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 18,
+    marginBottom: 20,
+  },
+
+  summaryLabel: {
+    fontSize: 12,
+    color: "#9CA3AF",
+    letterSpacing: 1,
+    fontWeight: "600",
+  },
+
+  summaryValue: {
+    fontSize: 24,
+    fontWeight: "700",
+    color: "#111827",
+    marginTop: 6,
+  },
+
+  summaryStats: {
+    flexDirection: "row",
+    marginTop: 14,
+    gap: 18,
+  },
+
+  stat: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
+  dot: {
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+    marginRight: 8,
+  },
+
+  statText: {
+    fontSize: 13,
+    color: "#6B7280",
+    fontWeight: "600",
+  },
+
+  notificationsList: {
     gap: 12,
   },
+
   card: {
-    backgroundColor: "#fff",
-    borderRadius: 18,
-    padding: 14,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 16,
     flexDirection: "row",
-    gap: 12,
     alignItems: "flex-start",
   },
-  iconBox: {
-    width: 42,
-    height: 42,
+
+  iconContainer: {
+    width: 46,
+    height: 46,
     borderRadius: 14,
     justifyContent: "center",
     alignItems: "center",
+    marginRight: 14,
   },
-  cardBody: {
+
+  cardContent: {
     flex: 1,
   },
+
   cardTitle: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "700",
     color: "#111827",
   },
+
   cardSubtitle: {
-    fontSize: 12,
+    fontSize: 13,
     color: "#6B7280",
     marginTop: 4,
-    lineHeight: 18,
+    lineHeight: 19,
   },
+
   cardTime: {
     marginTop: 8,
-    fontSize: 11,
+    fontSize: 12,
     color: "#9CA3AF",
     fontWeight: "600",
   },
