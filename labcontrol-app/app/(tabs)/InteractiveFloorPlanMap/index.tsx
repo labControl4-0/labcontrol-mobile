@@ -14,8 +14,30 @@ import Svg, { Polygon, Circle, G, Rect } from "react-native-svg";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
-import { apiFetch } from "../../../services/api";
-import type { Plant, Sector, SectorPoint, Machine, MachineStatus, BBox } from "../../../types/blueprint";
+import {
+  getMachinesByPlantCached,
+  getPlantsCached,
+  getSectorsByPlantCached,
+} from "../../../services/catalogService";
+import type { Plant, Sector, SectorPoint, Machine as ApiMachine, BBox } from "../../../types/blueprint";
+
+type MachineStatus = "active" | "warning" | "error" | "idle" | "unknown";
+type Machine = Omit<ApiMachine, "status" | "sectorId"> & { status: string; sectorId: string | null };
+
+function getStatusKey(status: string): MachineStatus {
+  const normalized = status.trim().toLocaleLowerCase("pt-BR");
+  if (["active", "ativo", "operacional", "operating"].includes(normalized)) return "active";
+  if (["warning", "alerta", "atenção", "attention"].includes(normalized)) return "warning";
+  if (["error", "erro", "falha", "fault"].includes(normalized)) return "error";
+  if (["idle", "inativo", "inactive", "parado"].includes(normalized)) return "idle";
+  return "unknown";
+}
+
+function formatDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "data indisponível";
+  return date.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
 
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
 const CANVAS_PADDING = 48;
@@ -38,34 +60,13 @@ const C = {
 };
 
 const STATUS_COLOR: Record<MachineStatus, string> = {
-  active:  C.active,
-  warning: C.warning,
-  error:   C.error,
-  idle:    C.idle,
+  active: C.active, warning: C.warning, error: C.error, idle: C.idle, unknown: C.idle,
 };
-
 const STATUS_LABEL: Record<MachineStatus, string> = {
-  active:  "Ativo",
-  warning: "Alerta",
-  error:   "Falha",
-  idle:    "Inativo",
+  active: "Ativo", warning: "Alerta", error: "Falha", idle: "Inativo", unknown: "Desconhecido",
 };
 
-// ─── API ──────────────────────────────────────────────────────────────────────
-async function fetchPlant(id: string): Promise<Plant> {
-  return apiFetch(`/plants/${id}`);
-}
-
-async function fetchSectors(plantId: string): Promise<Sector[]> {
-  const raw: Omit<Sector, "points">[] = await apiFetch(`/sectors/plant/${plantId}`);
-  return raw.map((s) => ({ ...s, points: JSON.parse(s.pointsJson) as SectorPoint[] }));
-}
-
-async function fetchMachines(plantId: string): Promise<Machine[]> {
-  return apiFetch(`/machines/plant/${plantId}`);
-}
-
-// ─── HELPERS ─────────────────────────────────────────────────────────────────
+// ─── HELPERS// ─── HELPERS ─────────────────────────────────────────────────────────────────
 function hexToRgba(hex: string, alpha: number): string {
   const h = hex.replace("#", "");
   const r = parseInt(h.slice(0, 2), 16);
@@ -85,12 +86,12 @@ function computeBBox(sectors: Sector[], machines: Machine[], canvasH: number): B
   const minY = Math.min(...allY);
   const maxX = Math.max(...allX);
   const maxY = Math.max(...allY);
-  const rawW = maxX - minX;
-  const rawH = maxY - minY;
+  const rawW = Math.max(maxX - minX, 1);
+  const rawH = Math.max(maxY - minY, 1);
 
-  const scale   = Math.min(
+  const scale = Math.min(
     (SCREEN_W - CANVAS_PADDING * 2) / rawW,
-    (canvasH  - CANVAS_PADDING * 2) / rawH,
+    (canvasH - CANVAS_PADDING * 2) / rawH,
   );
   const svgW    = SCREEN_W;
   const svgH    = canvasH;
@@ -153,23 +154,26 @@ function PulseRing({ color, active }: { color: string; active: boolean }) {
 
 // ─── MACHINE NODE ─────────────────────────────────────────────────────────────
 function MachineNode({
-  machine,
-  bbox,
-  onPress,
+  machine, bbox, onPress, accessibilityLabel,
 }: {
   machine: Machine;
-  bbox:    BBox;
+  bbox: BBox;
   onPress: (m: Machine) => void;
+  accessibilityLabel: string;
 }) {
-  const color = STATUS_COLOR[machine.status] ?? C.idle;
-  const cx    = tx(machine.posX, bbox.minX, bbox.scale, bbox.offsetX);
-  const cy    = tx(machine.posY, bbox.minY, bbox.scale, bbox.offsetY);
-  const SIZE  = 26;
+  const statusKey = getStatusKey(machine.status);
+  const color = STATUS_COLOR[statusKey];
+  const cx = tx(machine.posX, bbox.minX, bbox.scale, bbox.offsetX);
+  const cy = tx(machine.posY, bbox.minY, bbox.scale, bbox.offsetY);
+  const SIZE = 44;
 
   return (
     <TouchableOpacity
       onPress={() => onPress(machine)}
       activeOpacity={0.75}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint="Abre os detalhes e a localização desta máquina."
       style={{
         position:       "absolute",
         left:           cx - SIZE / 2,
@@ -180,7 +184,7 @@ function MachineNode({
         justifyContent: "center",
       }}
     >
-      <PulseRing color={color} active={machine.status === "active" || machine.status === "error"} />
+      <PulseRing color={color} active={statusKey === "active" || statusKey === "error"} />
 
       <View
         style={{
@@ -218,16 +222,17 @@ function MachineNode({
 
 // ─── MACHINE MODAL ────────────────────────────────────────────────────────────
 function MachineModal({
-  machine,
-  visible,
-  onClose,
+  machine, visible, onClose, plantName, sectorName,
 }: {
   machine: Machine | null;
   visible: boolean;
   onClose: () => void;
+  plantName: string;
+  sectorName: string;
 }) {
   if (!machine) return null;
-  const color = STATUS_COLOR[machine.status] ?? C.idle;
+  const statusKey = getStatusKey(machine.status);
+  const color = STATUS_COLOR[statusKey];
 
   return (
     <Modal transparent animationType="slide" visible={visible} onRequestClose={onClose}>
@@ -252,10 +257,11 @@ function MachineModal({
 
           <View style={s.infoGrid}>
             {[
-              { label: "ID",      value: machine.id.split("-")[0].toUpperCase() },
-              { label: "Modelo",  value: machine.model },
-              { label: "Status",  value: STATUS_LABEL[machine.status] ?? machine.status },
-              { label: "Posição", value: `${machine.posX} × ${machine.posY}` },
+              { label: "Planta", value: plantName },
+              { label: "Setor", value: sectorName || "Setor sem nome" },
+              { label: "Modelo", value: machine.model },
+              { label: "Status", value: STATUS_LABEL[statusKey] },
+              { label: "Posição", value: machine.posX + " × " + machine.posY },
             ].map((item) => (
               <View key={item.label} style={s.infoItem}>
                 <Text style={s.infoLabel}>{item.label}</Text>
@@ -386,7 +392,7 @@ function SectorLabels({ sectors, bbox }: { sectors: Sector[]; bbox: BBox }) {
 }
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
-const TOP_BAR_H = 96;
+const TOP_BAR_H = 112;
 const STRIP_H   = 50;
 
 // ─── MAIN SCREEN ──────────────────────────────────────────────────────────────
@@ -411,6 +417,8 @@ export default function FloorPlanScreen() {
   const [selected, setSelected] = useState<Machine | null>(null);
   const [modalOn,  setModalOn]  = useState(false);
   const [legendOn, setLegendOn] = useState(false);
+  const [cachedCatalogAt, setCachedCatalogAt] = useState<string | null>(null);
+  const [lastSyncedAt, setLastSyncedAt] = useState("");
 
   const load = useCallback(async () => {
     if (!plantId) {
@@ -418,22 +426,42 @@ export default function FloorPlanScreen() {
       setLoading(false);
       return;
     }
-
     try {
       setLoading(true);
       setError(null);
-
-      const [p, sec, mach] = await Promise.all([
-        fetchPlant(plantId),
-        fetchSectors(plantId),
-        fetchMachines(plantId),
+      const plantsResult = await getPlantsCached();
+      const selectedPlant = plantsResult.data.find((item) => item.id === plantId);
+      if (!selectedPlant) throw new Error("A planta selecionada não está disponível para esta conta.");
+      const [sectorsResult, machinesResult] = await Promise.all([
+        getSectorsByPlantCached(plantId),
+        getMachinesByPlantCached(plantId),
       ]);
-
-      setPlant(p);
-      setSectors(sec);
-      setMachines(mach);
-    } catch (e: any) {
-      setError(e.message ?? "Erro desconhecido");
+      const parsedSectors: Sector[] = sectorsResult.data.map((sector) => {
+        let points: SectorPoint[];
+        try {
+          points = JSON.parse(sector.pointsJson || "[]") as SectorPoint[];
+        } catch {
+          throw new Error("O mapa contém coordenadas inválidas no setor " + sector.name + ".");
+        }
+        if (!Array.isArray(points) || points.length < 3 || points.some((point) =>
+          typeof point?.X !== "number" || typeof point?.Y !== "number" ||
+          !Number.isFinite(point.X) || !Number.isFinite(point.Y)
+        )) {
+          throw new Error("O mapa contém coordenadas inválidas no setor " + sector.name + ".");
+        }
+        return { ...sector, points };
+      });
+      const cachedDates = [plantsResult, sectorsResult, machinesResult]
+        .filter((result) => result.source === "cache" && result.cachedAt)
+        .map((result) => result.cachedAt as string)
+        .sort();
+      setPlant(selectedPlant);
+      setSectors(parsedSectors);
+      setMachines(machinesResult.data as Machine[]);
+      setCachedCatalogAt(cachedDates[0] ?? null);
+      setLastSyncedAt(new Date().toISOString());
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Não foi possível carregar os dados desta planta.");
     } finally {
       setLoading(false);
     }
@@ -441,16 +469,17 @@ export default function FloorPlanScreen() {
 
   useEffect(() => { load(); }, [load]);
 
-  const canvasH = SCREEN_H - TOP_BAR_H - STRIP_H;
+  const canvasH = Math.max(220, SCREEN_H - TOP_BAR_H - STRIP_H);
 
   const bbox: BBox | null =
     sectors.length > 0 ? computeBBox(sectors, machines, canvasH) : null;
 
   const stats = {
-    active:  machines.filter((m) => m.status === "active").length,
-    warning: machines.filter((m) => m.status === "warning").length,
-    error:   machines.filter((m) => m.status === "error").length,
-    idle:    machines.filter((m) => m.status === "idle").length,
+    active: machines.filter((m) => getStatusKey(m.status) === "active").length,
+    warning: machines.filter((m) => getStatusKey(m.status) === "warning").length,
+    error: machines.filter((m) => getStatusKey(m.status) === "error").length,
+    idle: machines.filter((m) => getStatusKey(m.status) === "idle").length,
+    unknown: machines.filter((m) => getStatusKey(m.status) === "unknown").length,
   };
 
   // ── Loading ──────────────────────────────────────────────────────────────
@@ -469,8 +498,8 @@ export default function FloorPlanScreen() {
     return (
       <View style={[s.root, s.center]}>
         <StatusBar barStyle="light-content" backgroundColor={C.bg} />
-        <Text style={s.errorText}>⚠  {error}</Text>
-        <TouchableOpacity style={s.retryBtn} onPress={load}>
+        <Text style={s.errorText} accessibilityRole="alert">{error}</Text>
+        <TouchableOpacity style={s.retryBtn} onPress={() => void load()} accessibilityRole="button" accessibilityLabel="Tentar carregar o mapa novamente">
           <Text style={s.retryText}>Tentar novamente</Text>
         </TouchableOpacity>
       </View>
@@ -484,29 +513,33 @@ export default function FloorPlanScreen() {
 
       {/* ── Top bar ── */}
       <View style={s.topBar}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-          <TouchableOpacity onPress={() => router.push("/(tabs)/Labs")} hitSlop={8}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
+          <TouchableOpacity onPress={() => router.push("/(tabs)/Labs")} accessibilityRole="button"
+            accessibilityLabel="Voltar para plantas" hitSlop={8} style={s.headerButton}>
             <Ionicons name="arrow-back" size={20} color={C.muted} />
           </TouchableOpacity>
-          <View>
+          <View style={{ flex: 1 }}>
             <Text style={s.appName}>LabControl</Text>
-            <Text style={s.plantName} numberOfLines={1}>
-              {plant?.name ?? labName ?? "—"}
+            <Text style={s.plantName} numberOfLines={1}>{plant?.name ?? labName ?? "Planta"}</Text>
+            <Text style={s.syncText} numberOfLines={1}>
+              {cachedCatalogAt ? "Catálogo salvo em " + formatDateTime(cachedCatalogAt) : "Atualizado em " + formatDateTime(lastSyncedAt)}
             </Text>
           </View>
         </View>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-          <View style={s.liveDot} />
-        </View>
+        <TouchableOpacity onPress={() => void load()} accessibilityRole="button"
+          accessibilityLabel="Atualizar dados da planta" hitSlop={8} style={s.headerButton}>
+          <Ionicons name="refresh-outline" size={20} color={C.sectorLabel} />
+        </TouchableOpacity>
       </View>
 
       {/* ── Status strip ── */}
       <View style={s.strip}>
         {([
-          { label: "Ativos",   value: stats.active,  color: C.active  },
-          { label: "Alertas",  value: stats.warning, color: C.warning },
-          { label: "Falhas",   value: stats.error,   color: C.error   },
-          { label: "Inativos", value: stats.idle,    color: C.idle    },
+          { label: "Ativos", value: stats.active, color: C.active },
+          { label: "Alertas", value: stats.warning, color: C.warning },
+          { label: "Falhas", value: stats.error, color: C.error },
+          { label: "Inativos", value: stats.idle, color: C.idle },
+          { label: "Desconhecidos", value: stats.unknown, color: C.muted },
         ] as const).map((item) => (
           <View key={item.label} style={s.stripItem}>
             <Text style={[s.stripVal, { color: item.color }]}>{item.value}</Text>
@@ -517,19 +550,34 @@ export default function FloorPlanScreen() {
 
       {/* ── Canvas ── */}
       <View style={[s.canvas, { height: canvasH }]}>
-        {bbox && (
+        {bbox ? (
           <>
             <SectorLayer sectors={sectors} machines={machines} bbox={bbox} />
             <SectorLabels sectors={sectors} bbox={bbox} />
-            {machines.map((machine) => (
-              <MachineNode
-                key={machine.id}
-                machine={machine}
-                bbox={bbox}
-                onPress={(m) => { setSelected(m); setModalOn(true); }}
-              />
-            ))}
+            {machines.map((machine) => {
+              const sectorName = sectors.find((sector) => sector.id === machine.sectorId)?.name ?? "Setor sem nome";
+              return (
+                <MachineNode
+                  key={machine.id}
+                  machine={machine}
+                  bbox={bbox}
+                  accessibilityLabel={machine.name + ", " + STATUS_LABEL[getStatusKey(machine.status)] +
+                    ", planta " + (plant?.name ?? labName ?? "Planta") + ", setor " + sectorName}
+                  onPress={(selectedMachine) => { setSelected(selectedMachine); setModalOn(true); }}
+                />
+              );
+            })}
+            {machines.length === 0 ? (
+              <View style={s.canvasMessage} pointerEvents="none">
+                <Text style={s.canvasMessageText}>Nenhuma máquina cadastrada nesta planta.</Text>
+              </View>
+            ) : null}
           </>
+        ) : (
+          <View style={s.canvasMessage}>
+            <Ionicons name="map-outline" size={30} color={C.muted} />
+            <Text style={s.canvasMessageText}>Esta planta ainda não possui áreas cadastradas no mapa.</Text>
+          </View>
         )}
 
         {/* Legend toggle */}
@@ -553,6 +601,8 @@ export default function FloorPlanScreen() {
       <MachineModal
         machine={selected}
         visible={modalOn}
+        plantName={plant?.name ?? labName ?? "Planta"}
+        sectorName={selected ? sectors.find((sector) => sector.id === selected.sectorId)?.name ?? "Setor sem nome" : ""}
         onClose={() => setModalOn(false)}
       />
     </View>
@@ -581,7 +631,8 @@ const s = StyleSheet.create({
   },
   appName:   { color: C.muted,  fontSize: 11, letterSpacing: 1.5, textTransform: "uppercase" },
   plantName: { color: C.white,  fontSize: 17, fontWeight: "700",  marginTop: 1, maxWidth: SCREEN_W * 0.55 },
-  liveDot:   { width: 7, height: 7, borderRadius: 4, backgroundColor: C.active },
+  syncText: { color: C.muted, fontSize: 9, marginTop: 3 },
+  headerButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   liveText:  { color: C.active, fontSize: 10, fontWeight: "700",  letterSpacing: 1.2 },
 
   strip: {
@@ -596,6 +647,8 @@ const s = StyleSheet.create({
   stripLbl:  { color: C.muted, fontSize: 10, marginTop: 1, letterSpacing: 0.4 },
 
   canvas: { width: SCREEN_W, backgroundColor: C.canvas },
+  canvasMessage: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 28, gap: 12 },
+  canvasMessageText: { color: C.muted, fontSize: 14, lineHeight: 20, textAlign: "center" },
 
   legendBtn: {
     position:        "absolute",
