@@ -26,6 +26,7 @@ Expo Push Service → FCM (credencial FCM V1 no EAS) → Android
 | `app/components/PushSetupCard.tsx` | Cartão na tela **Notificações**: Ativar, Notificação local, token mascarado |
 | `app/_layout.tsx` | Handler, canal, registro silencioso e listeners de recebimento/clique |
 | `lib/push/notificationPayload.ts` | Validação estrita de categoria, IDs e origem; rota interna fixa |
+| `lib/push/authorizedMachineEvent.ts` | Confere ID, máquina e categoria no resultado autorizado da API |
 | `services/pushNavigation.ts` | Primeiro plano, clique em segundo plano e response inicial do app encerrado |
 | `app/NotificationEvent.tsx` | Busca e mostra o evento autorizado e a origem do payload |
 | `app.json` | `android.package = com.labcontrol.mobile` e plugin `expo-notifications` |
@@ -179,7 +180,7 @@ npx jest __tests__/e2e/dotnetDevice.e2e.test.ts --runInBand
 
   Categorias permitidas: failure, warning, maintenance e note. O app também exige GUIDs válidos para avisoId e machineId, e uma origem curta. A tela nunca usa URL ou nome de rota vindo do payload.
 - **Consulta autorizada:** após validar a sessão, a tela chama GET /api/machine-events/machine/{machineId} com o JWT. Só mostra o evento cujo ID, máquina e categoria coincidem com o payload. A API atual filtra a lista pelo acesso do usuário à planta. Se não houver sessão, se o evento não for encontrado ou se a API negar acesso, o app não abre os detalhes.
-- machineId é um campo adicional ao payload mínimo descrito no BE-07: é necessário porque a API atual não tem uma rota de consulta por avisoId. O contrato deve ser alinhado com a equipe BE-07 antes do push remoto.
+- machineId é um campo adicional ao payload mínimo descrito no BE-07: é necessário porque a API atual não tem uma rota de consulta por avisoId. O contrato deve ser alinhado com a equipe BE-07 antes do push remoto. O avisoId enviado deve ser o ID do MachineEvent e categoria deve corresponder ao eventType.
 - A issue BE-07 fala em Spring, mas o app LabControl usa a API ASP.NET Core. O fluxo mobile usa o contrato .NET proposto no MOB-05.
 - A notificação local de teste do MOB-05 não tem avisoId nem machineId; tocar nela não abre rota de evento.
 
