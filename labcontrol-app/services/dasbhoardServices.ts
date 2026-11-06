@@ -18,7 +18,8 @@ export type DashboardEvent = MachineEvent & {
 export type DashboardData = {
   plants: Plant[];
   machines: DashboardMachine[];
-  events: DashboardEvent[];
+  events: DashboardEvent[] | null;
+  eventsError?: string;
   /** Horário em que a tela terminou de consultar os contratos disponíveis. */
   syncedAt: string;
   /** Presente quando pelo menos parte do catálogo veio do cache local. */
@@ -50,22 +51,37 @@ export async function getDashboardData(): Promise<DashboardData> {
     items.map((machine) => ({ ...machine, plantName: plant.name }))
   );
 
-  const eventGroups = await Promise.all(
-    machines.map((machine) => getMachineEvents(machine.id))
-  );
-  const events: DashboardEvent[] = eventGroups.flatMap((items, index) =>
-    items.map((event) => ({
-      ...event,
-      machineName: machines[index].name,
-      plantName: machines[index].plantName,
-      plantId: machines[index].plantId,
-    }))
-  );
+  let events: DashboardEvent[] | null = [];
+  let eventsError: string | undefined;
+
+  if (machines.length > 0) {
+    try {
+      const eventGroups = await Promise.all(
+        machines.map((machine) => getMachineEvents(machine.id))
+      );
+      events = eventGroups.flatMap((items, index) =>
+        items.map((event) => ({
+          ...event,
+          machineName: machines[index].name,
+          plantName: machines[index].plantName,
+          plantId: machines[index].plantId,
+        }))
+      );
+    } catch (cause) {
+      // null significa que a consulta falhou; lista vazia significa sucesso sem eventos.
+      events = null;
+      eventsError =
+        cause instanceof Error
+          ? cause.message
+          : "Não foi possível carregar os eventos.";
+    }
+  }
 
   return {
     plants,
     machines,
     events,
+    eventsError,
     syncedAt: new Date().toISOString(),
     cachedCatalogAt: cachedDates.sort()[0],
   };
