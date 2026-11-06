@@ -31,7 +31,7 @@ export default function RootLayout() {
   // valida o clique tanto em app aberto quanto no início a partir da bandeja.
   useEffect(
     () =>
-      startPushNavigation((href) => router.push(href), {
+      startPushNavigation(router, {
         onReceived: (payload) => {
           if (!payload) return;
           Toast.show({
