@@ -114,7 +114,11 @@ export default function NotificationsScreen() {
     setError("");
     setData(null);
     try {
-      setData(await getDashboardData());
+      const result = await getDashboardData();
+      if (result.events === null) {
+        throw new Error(result.eventsError ?? "Não foi possível carregar os eventos.");
+      }
+      setData(result);
     } catch (cause) {
       setError(
         cause instanceof Error
