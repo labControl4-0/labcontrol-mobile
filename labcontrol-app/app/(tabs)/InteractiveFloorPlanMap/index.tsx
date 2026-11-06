@@ -316,8 +316,8 @@ function SectorLayer({
         const ctr         = centroidSvg(sector.points, bbox);
         const topY        = Math.min(...sector.points.map((p) => tx(p.Y, bbox.minY, bbox.scale, bbox.offsetY)));
         const sectorMachines = machines.filter((m) => m.sectorId === sector.id);
-        const hasError    = sectorMachines.some((m) => m.status === "error");
-        const hasWarning  = sectorMachines.some((m) => m.status === "warning");
+        const hasError    = sectorMachines.some((m) => getStatusKey(m.status) === "error");
+        const hasWarning  = sectorMachines.some((m) => getStatusKey(m.status) === "warning");
         const borderColor = hasError ? C.error : hasWarning ? C.warning : sector.color;
         const labelW      = Math.max(sector.name.length * 7 + 20, 60);
 
