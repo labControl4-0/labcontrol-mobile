@@ -23,7 +23,7 @@ export type PushNotificationsClient = Pick<
   | "clearLastNotificationResponseAsync"
 >;
 
-type PushRouter = { push: (href: Href) => void };
+type PushRouter = { push: (href: Href) => void; replace: (href: Href) => void };
 
 type PushNavigationOptions = {
   notifications?: PushNotificationsClient;
@@ -42,7 +42,10 @@ export async function navigateFromNotificationData(
   if (!route) return "invalid_payload";
 
   const session = await readSession().catch(() => null);
-  if (!session?.user.id) return "no_session";
+  if (!session?.user.id) {
+    router.replace("/");
+    return "no_session";
+  }
 
   router.push(route);
   return "opened";
