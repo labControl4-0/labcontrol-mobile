@@ -110,7 +110,7 @@ describe("payload do push", () => {
   });
 
   it("só navega com payload válido e sessão autenticada", async () => {
-    const router = { push: jest.fn() };
+    const router = { push: jest.fn(), replace: jest.fn() };
     const readSession = jest.fn(async () => ({
       token: "token-sintetico",
       user: { id: "usuario-teste" },
@@ -127,7 +127,7 @@ describe("payload do push", () => {
   });
 
   it("não navega quando não há sessão e rejeita o payload antes de ler a sessão", async () => {
-    const router = { push: jest.fn() };
+    const router = { push: jest.fn(), replace: jest.fn() };
     const readSession = jest.fn(async () => null);
 
     await expect(
@@ -139,12 +139,13 @@ describe("payload do push", () => {
 
     expect(readSession).toHaveBeenCalledTimes(1);
     expect(router.push).not.toHaveBeenCalled();
+    expect(router.replace).toHaveBeenCalledWith("/");
   });
 });
 
 describe("recebimento e interação", () => {
   it("trata recebimento em primeiro plano sem navegar antes do clique", () => {
-    const router = { push: jest.fn() };
+    const router = { push: jest.fn(), replace: jest.fn() };
     const onReceived = jest.fn();
     const stop = startPushNavigation(router, { onReceived });
     const state = getMockState();
@@ -159,7 +160,7 @@ describe("recebimento e interação", () => {
   });
 
   it("abre o evento do response inicial quando o app é iniciado pelo push", async () => {
-    const router = { push: jest.fn() };
+    const router = { push: jest.fn(), replace: jest.fn() };
     const state = getMockState();
     state.lastResponse = makeResponse(VALID_PAYLOAD);
 
@@ -176,7 +177,7 @@ describe("recebimento e interação", () => {
   });
 
   it("abre o evento ao tocar no push com o app em segundo plano", async () => {
-    const router = { push: jest.fn() };
+    const router = { push: jest.fn(), replace: jest.fn() };
     const state = getMockState();
     const onResponse = jest.fn();
     const stop = startPushNavigation(router, {
@@ -193,7 +194,7 @@ describe("recebimento e interação", () => {
   });
 
   it("não navega duas vezes quando o response inicial e o listener recebem o mesmo clique", async () => {
-    const router = { push: jest.fn() };
+    const router = { push: jest.fn(), replace: jest.fn() };
     const state = getMockState();
     const sameResponse = makeResponse(VALID_PAYLOAD, "same-push");
     state.lastResponse = sameResponse;
@@ -209,7 +210,7 @@ describe("recebimento e interação", () => {
   });
 
   it("não abre rota para clique com payload inválido", async () => {
-    const router = { push: jest.fn() };
+    const router = { push: jest.fn(), replace: jest.fn() };
     const state = getMockState();
     const onResponse = jest.fn();
 
