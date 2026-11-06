@@ -1,6 +1,6 @@
 # Expo Notifications e Android development build
 
-Tarefa: **MOB-05**. Dependência: MOB-01. Próximas: MOB-06 (receber push e navegar pelo payload) e BE-07 (registro e envio no backend).
+Tarefas: **MOB-05 e MOB-06**. Dependências: MOB-01, MOB-04 e BE-07 (registro e envio no backend).
 
 Segue a parte mobile da aula [Expo e Java: Push Notification](https://glaucotodesco.notion.site/Expo-e-Java-Push-Notification-3e35d52a81f581b5abe7d93874de63b5) (permissão, canal, token, notificação local, EAS e FCM). O backend **não** é o Spring Boot da aula: o LabControl continua na API em C# .NET, e o registro do aparelho usa a rota que o BE-07 vai criar nela.
 
@@ -24,7 +24,10 @@ Expo Push Service → FCM (credencial FCM V1 no EAS) → Android
 | `lib/push/pushStore.ts` | Registro do token no armazenamento seguro e máscara para a tela |
 | `services/pushRegistration.ts` | Permissão → token → `POST /devices`; `DELETE /devices/{token}` no logout |
 | `app/components/PushSetupCard.tsx` | Cartão na tela **Notificações**: Ativar, Notificação local, token mascarado |
-| `app/_layout.tsx` | Na abertura: handler, canal e registro silencioso (sem pedir permissão) |
+| `app/_layout.tsx` | Handler, canal, registro silencioso e listeners de recebimento/clique |
+| `lib/push/notificationPayload.ts` | Validação estrita de categoria, IDs e origem; rota interna fixa |
+| `services/pushNavigation.ts` | Primeiro plano, clique em segundo plano e response inicial do app encerrado |
+| `app/NotificationEvent.tsx` | Busca e mostra o evento autorizado e a origem do payload |
 | `app.json` | `android.package = com.labcontrol.mobile` e plugin `expo-notifications` |
 | `app.config.js` | `googleServicesFile` vindo do EAS (`GOOGLE_SERVICES_JSON`) ou do arquivo local |
 | `eas.json` | Perfis `development` (dev client, APK interno), `preview` e `production` |
@@ -159,6 +162,28 @@ $env:E2E_API_DLL = "$env:TEMP\labcontrol-api-e2e\out\LabControlApi.dll"
 $env:E2E_DB_CONNECTION = "Host=127.0.0.1;Port=55433;Database=labcontroldb;Username=admin;Password=admin"
 npx jest __tests__/e2e/dotnetDevice.e2e.test.ts --runInBand
 ```
+
+## Recebimento e navegação por push (MOB-06)
+
+- **Primeiro plano:** o handler do MOB-05 mostra a notificação; o listener de recebimento exibe um aviso no app. A navegação só ocorre após o usuário tocar.
+- **Segundo plano:** o listener de response trata o clique.
+- **App encerrado:** a resposta inicial da notificação é recuperada na abertura. O response é limpo após o tratamento para não repetir a navegação.
+- **Payload aceito:** categoria, avisoId, machineId e origem são enviados em data. Exemplo:
+
+  {
+    "categoria": "failure",
+    "avisoId": "2e1a1e01-6cb0-4c5e-8c49-5f35ee6ec121",
+    "machineId": "3f1c2a9e-0000-4000-8000-000000000001",
+    "origem": "machine-events"
+  }
+
+  Categorias permitidas: failure, warning, maintenance e note. O app também exige GUIDs válidos para avisoId e machineId, e uma origem curta. A tela nunca usa URL ou nome de rota vindo do payload.
+- **Consulta autorizada:** após validar a sessão, a tela chama GET /api/machine-events/machine/{machineId} com o JWT. Só mostra o evento cujo ID, máquina e categoria coincidem com o payload. A API atual filtra a lista pelo acesso do usuário à planta. Se não houver sessão, se o evento não for encontrado ou se a API negar acesso, o app não abre os detalhes.
+- machineId é um campo adicional ao payload mínimo descrito no BE-07: é necessário porque a API atual não tem uma rota de consulta por avisoId. O contrato deve ser alinhado com a equipe BE-07 antes do push remoto.
+- A issue BE-07 fala em Spring, mas o app LabControl usa a API ASP.NET Core. O fluxo mobile usa o contrato .NET proposto no MOB-05.
+- A notificação local de teste do MOB-05 não tem avisoId nem machineId; tocar nela não abre rota de evento.
+
+Os cenários automatizados de parsing, primeiro plano, clique no response inicial, evento não correspondente e sessão estão em __tests__/pushNavigation.test.ts. O roteiro manual e as evidências de integração estão em docs/MATRIZ_PUSH_NOTIFICATIONS.md.
 
 ## O que só pode ser comprovado no aparelho
 
