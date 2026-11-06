@@ -8,6 +8,7 @@ import { expoNetworkSource } from "../lib/offline/networkSource";
 import { startAutoSync, startReconnectSync } from "../services/occurrenceSync";
 import { ensureAndroidChannel, installNotificationHandler } from "../lib/push/notifications";
 import { setupPushNotifications } from "../services/pushRegistration";
+import { startPushNavigation } from "../services/pushNavigation";
 
 export default function RootLayout() {
   const router = useRouter();
@@ -25,6 +26,37 @@ export default function RootLayout() {
       .then(() => setupPushNotifications({ prompt: false }))
       .catch(() => undefined);
   }, []);
+
+  // Push (MOB-06): o handler apresenta o aviso em primeiro plano; o observer
+  // valida o clique tanto em app aberto quanto no início a partir da bandeja.
+  useEffect(
+    () =>
+      startPushNavigation((href) => router.push(href), {
+        onReceived: (payload) => {
+          if (!payload) return;
+          Toast.show({
+            type: "info",
+            text1: "Novo aviso recebido",
+            text2: "Toque na notificação para abrir o evento.",
+          });
+        },
+        onResponse: (status) => {
+          if (status === "invalid_payload") {
+            Toast.show({
+              type: "error",
+              text1: "Notificação inválida",
+              text2: "Não foi possível abrir o evento.",
+            });
+          } else if (status === "no_session") {
+            Toast.show({
+              type: "info",
+              text1: "Entre novamente para abrir este aviso.",
+            });
+          }
+        },
+      }),
+    [router]
+  );
 
   // Fila offline: tenta enviar ao abrir o app, ao voltar para ele e a cada 30 s
   // (respeitando o backoff), e uma vez sempre que a conexão volta.
