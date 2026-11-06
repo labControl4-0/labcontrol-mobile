@@ -13,6 +13,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { BottomNavBar } from "./components/BottomNavBar";
 import { getAuthSession } from "../lib/auth";
+import { findAuthorizedMachineEvent } from "../lib/push/authorizedMachineEvent";
 import {
   parseMachineEventPushPayload,
   type MachineEventPushPayload,
@@ -40,39 +41,6 @@ const CATEGORY_LABELS: Record<MachineEventPushPayload["categoria"], string> = {
   maintenance: "Manutenção",
   note: "Informativo",
 };
-
-function findAuthorizedEvent(
-  value: unknown,
-  payload: MachineEventPushPayload
-): MachineEvent | null {
-  if (!Array.isArray(value)) return null;
-
-  const candidate = value.find((item) => {
-    if (!item || typeof item !== "object") return false;
-    const row = item as Record<string, unknown>;
-    return (
-      typeof row.id === "string" &&
-      row.id.toLowerCase() === payload.avisoId &&
-      typeof row.machineId === "string" &&
-      row.machineId.toLowerCase() === payload.machineId &&
-      typeof row.eventType === "string" &&
-      row.eventType.trim().toLowerCase() === payload.categoria &&
-      typeof row.message === "string" &&
-      typeof row.createdAt === "string"
-    );
-  });
-
-  if (!candidate || typeof candidate !== "object") return null;
-  const row = candidate as Record<string, unknown>;
-  return {
-    id: row.id as string,
-    machineId: row.machineId as string,
-    eventType: row.eventType as string,
-    message: row.message as string,
-    createdAt: row.createdAt as string,
-    resolvedAt: typeof row.resolvedAt === "string" ? row.resolvedAt : null,
-  };
-}
 
 function formatDate(value: string): string {
   const date = new Date(value);
@@ -119,7 +87,7 @@ export default function NotificationEventScreen() {
           "/machine-events/machine/" + encodeURIComponent(payload.machineId),
           { authToken: session.token }
         );
-        const event = findAuthorizedEvent(events, payload);
+        const event = findAuthorizedMachineEvent(events, payload);
         const currentSession = await getAuthSession().catch(() => null);
 
         if (!active) return;
