@@ -23,7 +23,7 @@ export default function RootLayout() {
   useEffect(() => {
     installNotificationHandler();
     ensureAndroidChannel()
-      .then(() => setupPushNotifications({ prompt: false }))
+      .then(() => setupPushNotifications({ prompt: false, force: true }))
       .catch(() => undefined);
   }, []);
 

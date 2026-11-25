@@ -10,7 +10,7 @@ Use uma conta e eventos sintéticos nos testes. O destino sempre é a tela inter
 | Payload inválido | Categoria desconhecida, ID inválido ou payload com URL | Nenhuma navegação; resposta inválida é descartada | pushNavigation.test.ts — validação do payload |
 | Evento de outra máquina/ID/categoria | API retorna eventos autorizados para a máquina do payload | Só abre se ID, machineId e categoria coincidirem | pushNavigation.test.ts — evento autorizado |
 | Sessão encerrada | Tocar num push antigo após logout | Não abre detalhes; encaminha para login | pushNavigation.test.ts — sessão ausente |
-| Logout | Sair da conta com aparelho registrado | MOB-05 chama DELETE /api/devices/{pushToken} antes de limpar a sessão; falha de rede não impede logout | pushNotifications.test.ts — remoção no logout |
+| Logout | Sair da conta com aparelho registrado | MOB-05 chama DELETE /api/devices antes de limpar a sessão; falha de rede não impede logout | pushNotifications.test.ts — remoção no logout |
 | Push remoto no Android | BE-07 envia via Expo Push Service e FCM a um token real | Push recebido, clique abre o evento autorizado e mostra categoria, ID e origem | Evidência manual necessária |
 
 ## Contrato de payload proposto ao BE-07
@@ -41,3 +41,7 @@ Anexe vídeo do recebimento → clique → detalhe e um registro sanitizado da a
 - BE-07 (#73) ainda está aberto; o envio real e a remoção no backend precisam ser verificados.
 - A API do projeto é ASP.NET Core; alinhar com BE-07 o campo machineId e a rota que enviará a notificação.
 - MOB-05 já define o projectId do EAS; ainda são necessários Firebase/FCM configurados, um development build Android e o BE-07 para comprovar push remoto.
+
+### Integração .NET
+
+A API envia ao criar um evento de máquina nas categorias `failure`, `warning`, `maintenance` ou `note`. Para comprovar a entrega remota, ative as notificações em um development build Android com FCM configurado e crie um evento na própria planta. Teste o clique com o app aberto, em segundo plano e encerrado. Confira a origem `LabControl` e o ID do evento. Após sair com a API acessível, crie outro evento a partir de outra sessão e confira que o aparelho anterior ficou sem novo aviso. O recebimento real exige registro EAS/FCM e aparelho físico.

@@ -5,10 +5,7 @@
 // Postgres). Usa o código real do app; só o módulo nativo de notificações é
 // simulado, com um token SINTÉTICO (o ExpoPushToken real só existe no aparelho).
 //
-// Hoje a API não tem POST /api/devices (BE-07). O teste comprova que o app
-// autentica, chama a rota e NÃO trata o aparelho como registrado. Quando o
-// BE-07 entrar, troque a expectativa para "registered" (ver docs/PUSH_NOTIFICATIONS.md).
-//
+// Exercita as rotas do BE-07 na API .NET.
 // Fica desligado em `npm test`. Variáveis: E2E_API_DLL e E2E_DB_CONNECTION
 // (as mesmas de backendSync.e2e.test.ts) e E2E_API_PORT (padrão 5082).
 import { spawn, type ChildProcess } from "child_process";
@@ -102,29 +99,47 @@ describeE2E("E2E: registro do aparelho na API .NET", () => {
     }
   });
 
-  it("sem a rota do BE-07, o app avisa e não marca o aparelho como registrado", async () => {
+  it("registra o aparelho e mantém a sessão válida", async () => {
     const result = await setupPushNotifications({ prompt: true });
 
-    expect(result).toMatchObject({
-      status: "server_unavailable",
-      message: expect.stringMatching(/BE-07/),
-      maskedToken: "ExponentPushToken[e2e-••••tnet]",
+    expect(result).toMatchObject({ status: "registered", alreadyRegistered: false });
+    expect(await getPushRegistration()).toMatchObject({
+      pushToken: "ExponentPushToken[e2e-sintetico-dotnet]",
     });
-    expect(await getPushRegistration()).toBeNull();
+    expect(await getAuthSession()).not.toBeNull();
   });
 
-  it("a rota é chamada com sessão válida: o 404 não derruba o login", async () => {
-    const again = await setupPushNotifications({ prompt: false });
-
-    expect(again.status).toBe("server_unavailable");
-    // Um 401 teria limpado a sessão (MOB-01). Ela continua, e o token JWT ainda vale na API.
+  it("rejeita um token inválido e um registro sem autenticação", async () => {
     const session = await getAuthSession();
-    expect(session).not.toBeNull();
-    const plants = await fetch(`${API}/plants`, { headers: { Authorization: `Bearer ${session!.token}` } });
-    expect(plants.status).toBe(200);
+    const options = {
+      method: "POST",
+      body: JSON.stringify({ pushToken: "invalid", platform: "android" }),
+      headers: { "Content-Type": "application/json" },
+    };
+    expect((await fetch(`${API}/devices`, options)).status).toBe(401);
+    const invalid = await fetch(`${API}/devices`, {
+      ...options,
+      headers: { ...options.headers, Authorization: `Bearer ${session!.token}` },
+    });
+    expect(invalid.status).toBe(400);
   });
 
-  it("logout não quebra mesmo sem a rota de remoção", async () => {
-    await expect(unregisterPushDevice()).resolves.toBeUndefined();
+  it("remove a associação no logout e limpa o registro local", async () => {
+    const session = await getAuthSession();
+    const requests: Response[] = [];
+    const realFetch = global.fetch;
+    const spy = jest.spyOn(global, "fetch").mockImplementation(async (...args) => {
+      const response = await realFetch(...args);
+      if (args[1]?.method === "DELETE") requests.push(response);
+      return response;
+    });
+    try {
+      await unregisterPushDevice();
+      expect(requests.map((response) => response.status)).toEqual([204]);
+      expect(await getPushRegistration()).toBeNull();
+      expect((await getAuthSession())?.token).toBe(session?.token);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
