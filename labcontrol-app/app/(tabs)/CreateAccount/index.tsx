@@ -2,7 +2,7 @@ import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
-  Alert,
+  ActivityIndicator,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -12,52 +12,56 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { registerUser, saveAuthSession } from "../../../lib/auth";
-import Toast from "react-native-toast-message";
+
+import { register } from "../../../services/authService";
 
 export default function CreateAccount() {
   const router = useRouter();
-
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
+  const clearError = () => setError("");
 
-const handleCreateAccount = async () => {
-  if (isSubmitting) return;
+  const handleCreateAccount = async () => {
+    setError("");
 
-  try {
-    setIsSubmitting(true);
+    if (!fullName.trim()) {
+      setError("Por favor, informe seu nome completo.");
+      return;
+    }
+    if (!email.trim()) {
+      setError("Por favor, informe o e-mail.");
+      return;
+    }
+    if (password.length < 6) {
+      setError("A senha deve ter pelo menos 6 caracteres.");
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError("As senhas não coincidem.");
+      return;
+    }
 
-    const user = await registerUser(
-      fullName.trim(),
-      email.trim(),
-      password
-    );
-
-    await saveAuthSession(user);
-
-    Toast.show({
-      type: "success",
-      text1: "Conta criada com sucesso 🎉",
-    });
-
-    router.replace("/Dashboard");
-
-  } catch (error) {
-    Alert.alert(
-      "Registration failed",
-      error instanceof Error ? error.message : "Unexpected error"
-    );
-  } finally {
-    setIsSubmitting(false);
-  }
-};
+    setLoading(true);
+    try {
+      await register({ name: fullName.trim(), email: email.trim(), password });
+      router.replace("/");
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Falha ao criar conta. Tente novamente."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -88,8 +92,10 @@ const handleCreateAccount = async () => {
                   style={styles.input}
                   placeholder="John Doe"
                   placeholderTextColor="#9aa5bd"
+                  autoCapitalize="words"
                   value={fullName}
-                  onChangeText={setFullName}
+                  onChangeText={(v) => { setFullName(v); clearError(); }}
+                  editable={!loading}
                 />
               </View>
 
@@ -100,8 +106,11 @@ const handleCreateAccount = async () => {
                   style={styles.input}
                   placeholder="user@email.com"
                   placeholderTextColor="#9aa5bd"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
                   value={email}
-                  onChangeText={setEmail}
+                  onChangeText={(v) => { setEmail(v); clearError(); }}
+                  editable={!loading}
                 />
               </View>
 
@@ -110,11 +119,17 @@ const handleCreateAccount = async () => {
                 <Ionicons name="lock-closed-outline" size={18} color="#9aa5bd" />
                 <TextInput
                   style={styles.input}
+                  placeholder="••••••••"
+                  placeholderTextColor="#9aa5bd"
                   secureTextEntry={!showPassword}
                   value={password}
-                  onChangeText={setPassword}
+                  onChangeText={(v) => { setPassword(v); clearError(); }}
+                  editable={!loading}
                 />
-                <Pressable onPress={() => setShowPassword(!showPassword)}>
+                <Pressable
+                  onPress={() => setShowPassword(!showPassword)}
+                  style={styles.eyeButton}
+                >
                   <Ionicons
                     name={showPassword ? "eye-outline" : "eye-off-outline"}
                     size={20}
@@ -123,47 +138,71 @@ const handleCreateAccount = async () => {
                 </Pressable>
               </View>
 
-              <Text style={[styles.label, styles.marginTop]}>
-                CONFIRM PASSWORD
-              </Text>
+              <Text style={[styles.label, styles.marginTop]}>CONFIRM PASSWORD</Text>
               <View style={styles.inputWrapper}>
                 <Ionicons name="lock-closed-outline" size={18} color="#9aa5bd" />
                 <TextInput
                   style={styles.input}
+                  placeholder="••••••••"
+                  placeholderTextColor="#9aa5bd"
                   secureTextEntry={!showConfirmPassword}
                   value={confirmPassword}
-                  onChangeText={setConfirmPassword}
+                  onChangeText={(v) => { setConfirmPassword(v); clearError(); }}
+                  editable={!loading}
                 />
                 <Pressable
-                  onPress={() =>
-                    setShowConfirmPassword(!showConfirmPassword)
-                  }
+                  onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                  style={styles.eyeButton}
                 >
                   <Ionicons
-                    name={
-                      showConfirmPassword
-                        ? "eye-outline"
-                        : "eye-off-outline"
-                    }
+                    name={showConfirmPassword ? "eye-outline" : "eye-off-outline"}
                     size={20}
                     color="#9aa5bd"
                   />
                 </Pressable>
               </View>
 
-              <Pressable
-                style={[
-                  styles.createButton,
-                  isSubmitting && styles.createButtonDisabled,
-                ]}
-                onPress={handleCreateAccount}
-                disabled={isSubmitting}
-              >
-                <Text style={styles.createButtonText}>
-                  {isSubmitting ? "Creating..." : "Create Account"}
+              <View style={styles.termsContainer}>
+                <Text style={styles.termsText}>
+                  By creating an account, you agree to our{" "}
+                  <Text style={styles.linkText}>Terms of Service</Text> and{" "}
+                  <Text style={styles.linkText}>Privacy Policy</Text>
                 </Text>
+              </View>
+
+              {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+              <Pressable
+                style={[styles.createButton, loading && styles.buttonDisabled]}
+                onPress={handleCreateAccount}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator size="small" color="#18dcd3" />
+                ) : (
+                  <>
+                    <Text style={styles.createButtonText}>Create Account</Text>
+                    <Ionicons name="chevron-forward" size={18} color="#18dcd3" />
+                  </>
+                )}
               </Pressable>
             </View>
+
+            <View style={styles.bottomStrip}>
+              <Text style={styles.bottomText}>
+                Already have an account?{" "}
+                <Pressable onPress={() => router.push("/")}>
+                  <Text style={styles.bottomLinkText}>Sign In</Text>
+                </Pressable>
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.footer}>
+            <Text style={styles.footerSecurity}>End-to-end Encrypted</Text>
+            <Text style={styles.footerCopyright}>
+              © 2024 LabControll Systems Inc.
+            </Text>
           </View>
         </View>
       </ScrollView>
@@ -171,7 +210,6 @@ const handleCreateAccount = async () => {
   );
 }
 
-// ✅ FORA do componente
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
@@ -246,6 +284,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "800",
     color: "#34435f",
+    letterSpacing: 0.8,
     marginBottom: 8,
   },
   marginTop: {
@@ -260,27 +299,82 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     flexDirection: "row",
     alignItems: "center",
+    gap: 8,
   },
   input: {
     flex: 1,
     color: "#30405f",
     fontSize: 16,
-    marginLeft: 8,
+  },
+  eyeButton: {
+    padding: 4,
+  },
+  termsContainer: {
+    marginTop: 14,
+    marginBottom: 12,
+  },
+  termsText: {
+    color: "#607394",
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: "center",
+  },
+  linkText: {
+    color: "#0baea6",
+    fontWeight: "700",
+  },
+  errorText: {
+    color: "#e05252",
+    fontSize: 13,
+    marginBottom: 10,
+    textAlign: "center",
   },
   createButton: {
-    marginTop: 16,
     height: 50,
     borderRadius: 8,
     backgroundColor: "#0b1738",
     justifyContent: "center",
     alignItems: "center",
+    flexDirection: "row",
+    gap: 8,
+    elevation: 5,
   },
-  createButtonDisabled: {
-    opacity: 0.6,
+  buttonDisabled: {
+    opacity: 0.7,
   },
   createButtonText: {
     color: "#f4f7ff",
     fontSize: 15,
     fontWeight: "600",
+  },
+  bottomStrip: {
+    backgroundColor: "#edf2f8",
+    borderTopWidth: 1,
+    borderTopColor: "#e4ebf5",
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    marginTop: 16,
+  },
+  bottomText: {
+    textAlign: "center",
+    color: "#607394",
+    fontSize: 13,
+  },
+  bottomLinkText: {
+    color: "#0baea6",
+    fontWeight: "700",
+  },
+  footer: {
+    marginTop: 14,
+    alignItems: "center",
+    gap: 4,
+  },
+  footerSecurity: {
+    color: "#8ea1be",
+    fontSize: 13,
+  },
+  footerCopyright: {
+    color: "#91a2bb",
+    fontSize: 12,
   },
 });

@@ -19,7 +19,8 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.labcontrol.mobile"
     },
     "web": {
       "output": "static",
@@ -38,11 +39,39 @@
             "backgroundColor": "#000000"
           }
         }
+      ],
+      "expo-secure-store",
+      "expo-sqlite",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "O LabControl usa sua localização quando você pede para localizar máquinas ou registrar a posição de uma planta ou ocorrência.",
+          "isAndroidBackgroundLocationEnabled": false,
+          "isAndroidForegroundServiceEnabled": false,
+          "locationAlwaysAndWhenInUsePermission": false,
+          "locationAlwaysPermission": false,
+          "locationFullAccuracyPermission": false,
+          "motionUsagePermission": false
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#2563EB",
+          "defaultChannel": "machine-alerts"
+        }
       ]
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "41bd3734-449f-42a7-aeac-70399ff8a495"
+      }
+    },
+    "owner": "gustavo_mestre_dev"
   }
 }

@@ -1,505 +1,726 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  SafeAreaView,
-  StatusBar,
-  Platform,
   Dimensions,
-} from 'react-native';
-import { MaterialIcons, Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+  TouchableOpacity,
+  Modal,
+  Animated,
+  StatusBar,
+  ActivityIndicator,
+} from "react-native";
+import Svg, { Polygon, Circle, G, Rect } from "react-native-svg";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 
-const { width } = Dimensions.get('window');
+import {
+  getMachinesByPlantCached,
+  getPlantsCached,
+  getSectorsByPlantCached,
+} from "../../../services/catalogService";
+import type { Plant, Sector, SectorPoint, Machine as ApiMachine, BBox } from "../../../types/blueprint";
 
-// ============================================================================
-// COLORS & DESIGN SYSTEM
-// ============================================================================
+type MachineStatus = "active" | "warning" | "error" | "idle" | "unknown";
+type Machine = Omit<ApiMachine, "status" | "sectorId"> & { status: string; sectorId: string | null };
 
-const colors = {
-  slate900: '#0F172A',
-  slate700: '#334155',
-  slate600: '#475569',
-  slate400: '#94A3B8',
-  slate200: '#E2E8F0',
-  slate100: '#F1F5F9',
-  white: '#FFFFFF',
-  blue: '#2563EB',
-  blueLight: '#DBEAFE',
-  green: '#10B981',
-  greenLight: '#D1FAE5',
-  red: '#EF4444',
-  redLight: '#FEE2E2',
-  orange: '#F97316',
-  orangeLight: '#FFEDD5',
-  purple: '#9C27B0',
-  purpleLight: '#F3E5F5',
-  pink: '#FF6B9D',
-  pinkLight: '#FFE0E6',
-  gray: '#F3F4F6',
-};
-
-const spacing = {
-  xs: 4,
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 24,
-  xxl: 32,
-};
-
-const radius = {
-  sm: 6,
-  md: 8,
-  lg: 12,
-  xl: 16,
-  full: 999,
-};
-
-
-
-// ============================================================================
-// HEADER COMPONENT
-// ============================================================================
-
-interface HeaderProps {
-  title: string;
-  subtitle: string;
-  onBack: () => void;
+function getStatusKey(status: string | null | undefined): MachineStatus {
+  const normalized = (status ?? "").trim().toLocaleLowerCase("pt-BR");
+  if (["active", "ativo", "operacional", "operating"].includes(normalized)) return "active";
+  if (["warning", "alerta", "atenção", "attention"].includes(normalized)) return "warning";
+  if (["error", "erro", "falha", "fault"].includes(normalized)) return "error";
+  if (["idle", "inativo", "inactive", "parado"].includes(normalized)) return "idle";
+  return "unknown";
 }
 
-const Header: React.FC<HeaderProps> = ({ title, subtitle, onBack }) => (
-  <View style={styles.header}>
-    <TouchableOpacity hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} onPress={onBack}>
-      <Ionicons name="arrow-back" size={24} color={colors.slate900} />
-    </TouchableOpacity>
-
-    <View style={styles.headerCenter}>
-      <Text style={styles.headerTitle}>{title}</Text>
-      <Text style={styles.headerSubtitle}>{subtitle}</Text>
-    </View>
-  </View>
-);
-
-// ============================================================================
-// ZONE CARD COMPONENT
-// ============================================================================
-
-interface ZoneCardProps {
-  type: 'ok' | 'alert' | 'active';
-  mainText: string;
-  secondaryText?: string;
-  tertiaryText?: string;
+function formatDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "data indisponível";
+  return date.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
-const ZoneCard: React.FC<ZoneCardProps> = ({
-  type,
-  mainText,
-  secondaryText,
-  tertiaryText,
-}) => {
-  const getStyle = () => {
-    switch (type) {
-      case 'ok':
-        return { borderColor: colors.green, backgroundColor: colors.greenLight };
-      case 'alert':
-        return { borderColor: colors.red, backgroundColor: colors.redLight };
-      case 'active':
-        return { borderColor: colors.blue, backgroundColor: colors.blueLight };
-      default:
-        return {};
-    }
-  };
+// ─── CONFIG ───────────────────────────────────────────────────────────────────
+const CANVAS_PADDING = 48;
 
-  return (
-    <View style={[styles.zoneCard, getStyle()]}>
-      {type === 'alert' && (
-        <View style={styles.alertTag}>
-          <Text style={styles.alertTagText}>High Temp</Text>
-        </View>
-      )}
-      <Text style={styles.zoneCardMain}>{mainText}</Text>
-      {secondaryText && (
-        <Text style={styles.zoneCardSecondary}>{secondaryText}</Text>
-      )}
-      {tertiaryText && (
-        <Text style={styles.zoneCardTertiary}>{tertiaryText}</Text>
-      )}
-    </View>
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
+
+// ─── COLORS ───────────────────────────────────────────────────────────────────
+const C = {
+  bg:          "#0d1117",
+  canvas:      "#0f1923",
+  white:       "#e8f4ff",
+  muted:       "#4a6fa5",
+  panel:       "#111827",
+  panelBorder: "rgba(80,160,255,0.2)",
+  sectorLabel: "#5ab4ff",
+  active:      "#00e676",
+  warning:     "#ffb300",
+  error:       "#ff1744",
+  idle:        "#546e7a",
+};
+
+const STATUS_COLOR: Record<MachineStatus, string> = {
+  active: C.active, warning: C.warning, error: C.error, idle: C.idle, unknown: C.idle,
+};
+const STATUS_LABEL: Record<MachineStatus, string> = {
+  active: "Ativo", warning: "Alerta", error: "Falha", idle: "Inativo", unknown: "Desconhecido",
+};
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+function hexToRgba(hex: string, alpha: number): string {
+  const h = hex.replace("#", "");
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function computeBBox(sectors: Sector[], machines: Machine[], canvasH: number): BBox {
+  const allX: number[] = [];
+  const allY: number[] = [];
+
+  for (const s of sectors) for (const p of s.points) { allX.push(p.X); allY.push(p.Y); }
+  for (const m of machines)                           { allX.push(m.posX); allY.push(m.posY); }
+
+  const minX = Math.min(...allX);
+  const minY = Math.min(...allY);
+  const maxX = Math.max(...allX);
+  const maxY = Math.max(...allY);
+  const rawW = Math.max(maxX - minX, 1);
+  const rawH = Math.max(maxY - minY, 1);
+
+  const scale = Math.min(
+    (SCREEN_W - CANVAS_PADDING * 2) / rawW,
+    (canvasH - CANVAS_PADDING * 2) / rawH,
   );
-};
+  const svgW    = SCREEN_W;
+  const svgH    = canvasH;
+  const offsetX = (svgW - rawW * scale) / 2;
+  const offsetY = (svgH - rawH * scale) / 2;
 
-// ============================================================================
-// ZONES GRID
-// ============================================================================
-
-const ZonesGrid: React.FC = () => (
-  <View style={styles.zonesGrid}>
-    <ZoneCard type="ok" mainText="3/5" />
-    <ZoneCard
-      type="alert"
-      mainText="404"
-      secondaryText="Filter Check"
-    />
-    <ZoneCard
-      type="active"
-      mainText="22°C"
-      tertiaryText="4.2kW"
-    />
-  </View>
-);
-
-// ============================================================================
-// LAB STATUS HEADER
-// ============================================================================
-
-const LabStatusHeader: React.FC = () => (
-  <View style={styles.labStatusContainer}>
-    <View>
-      <View style={styles.labHeaderTop}>
-        <Text style={styles.labTitle}>Lab 402: Bio-Safety</Text>
-        <View style={styles.badgeNormal}>
-          <Text style={styles.badgeNormalText}>NORMAL</Text>
-        </View>
-      </View>
-      <Text style={styles.labSubtitle}>Zone B · Critical Infrastructure</Text>
-    </View>
-  </View>
-);
-
-// ============================================================================
-// METRIC CARD COMPONENT
-// ============================================================================
-
-interface MetricCardProps {
-  icon: string;
-  label: string;
-  value: string;
-  subtitle: string;
-  iconBg: string;
+  return { minX, minY, maxX, maxY, rawW, rawH, scale, offsetX, offsetY, svgW, svgH };
 }
 
-const MetricCard: React.FC<MetricCardProps> = ({
-  icon,
-  label,
-  value,
-  subtitle,
-  iconBg,
-}) => (
-  <View style={styles.metricCard}>
-    <View style={[styles.metricIconBox, { backgroundColor: iconBg }]}>
-      <MaterialIcons name={icon as any} size={20} color={colors.white} />
-    </View>
-    <Text style={styles.metricLabel}>{label}</Text>
-    <Text style={styles.metricValue}>{value}</Text>
-    <Text style={styles.metricSubtitle}>{subtitle}</Text>
-  </View>
-);
+function tx(raw: number, min: number, scale: number, offset: number): number {
+  return (raw - min) * scale + offset;
+}
 
-// ============================================================================
-// METRICS GRID
-// ============================================================================
+function toSvgPoints(points: SectorPoint[], bbox: BBox): string {
+  return points
+    .map((p) => `${tx(p.X, bbox.minX, bbox.scale, bbox.offsetX)},${tx(p.Y, bbox.minY, bbox.scale, bbox.offsetY)}`)
+    .join(" ");
+}
 
-const MetricsGrid: React.FC = () => (
-  <View style={styles.metricsGrid}>
-    <MetricCard
-      icon="thermostat"
-      label="Temperature"
-      value="22.4°C"
-      subtitle="Target 22°"
-      iconBg="#FF6B6B"
-    />
-    <MetricCard
-      icon="water-drop"
-      label="Humidity"
-      value="45%"
-      subtitle="Stable"
-      iconBg="#FFB84D"
-    />
-    <MetricCard
-      icon="people"
-      label="Occupancy"
-      value="4/8"
-      subtitle="Active"
-      iconBg="#9C27B0"
-    />
-    <MetricCard
-      icon="air"
-      label="Air Quality"
-      value="412"
-      subtitle="Good"
-      iconBg="#FF6B9D"
-    />
-  </View>
-);
+function centroidSvg(points: SectorPoint[], bbox: BBox): { x: number; y: number } {
+  const n = points.length;
+  return {
+    x: points.reduce((s, p) => s + tx(p.X, bbox.minX, bbox.scale, bbox.offsetX), 0) / n,
+    y: points.reduce((s, p) => s + tx(p.Y, bbox.minY, bbox.scale, bbox.offsetY), 0) / n,
+  };
+}
 
-export default function InteractiveFloorPlanMap() {
-  const params = useLocalSearchParams<{ labName?: string; labStatus?: string; labDetail?: string }>();
-  const router = useRouter();
-  const labName = typeof params.labName === 'string' ? params.labName : 'Lab 402';
-  const labStatus = typeof params.labStatus === 'string' ? params.labStatus : 'NORMAL';
-  const labDetail = typeof params.labDetail === 'string' ? params.labDetail : 'Zone B · Critical Infrastructure';
+// ─── PULSE RING ───────────────────────────────────────────────────────────────
+function PulseRing({ color, active }: { color: string; active: boolean }) {
+  const anim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (!active) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(anim, { toValue: 1.9, duration: 1000, useNativeDriver: true }),
+        Animated.timing(anim, { toValue: 1,   duration: 1000, useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [active]);
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={colors.white} />
+    <Animated.View
+      pointerEvents="none"
+      style={{
+        position:     "absolute",
+        width:        24,
+        height:       24,
+        borderRadius: 12,
+        borderWidth:  1,
+        borderColor:  color,
+        opacity:      0.28,
+        transform:    [{ scale: anim }],
+      }}
+    />
+  );
+}
 
-      <Header title={labName} subtitle={labDetail} onBack={() => router.push('/Labs')} />
+// ─── MACHINE NODE ─────────────────────────────────────────────────────────────
+function MachineNode({
+  machine, bbox, onPress, accessibilityLabel,
+}: {
+  machine: Machine;
+  bbox: BBox;
+  onPress: (m: Machine) => void;
+  accessibilityLabel: string;
+}) {
+  const statusKey = getStatusKey(machine.status);
+  const color = STATUS_COLOR[statusKey];
+  const cx = tx(machine.posX, bbox.minX, bbox.scale, bbox.offsetX);
+  const cy = tx(machine.posY, bbox.minY, bbox.scale, bbox.offsetY);
+  const SIZE = 44;
 
-      <ScrollView
-        style={styles.scrollView}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+  return (
+    <TouchableOpacity
+      onPress={() => onPress(machine)}
+      activeOpacity={0.75}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint="Abre os detalhes e a localização desta máquina."
+      style={{
+        position:       "absolute",
+        left:           cx - SIZE / 2,
+        top:            cy - SIZE / 2,
+        width:          SIZE,
+        height:         SIZE,
+        alignItems:     "center",
+        justifyContent: "center",
+      }}
+    >
+      <PulseRing color={color} active={statusKey === "active" || statusKey === "error"} />
+
+      <View
+        style={{
+          width:           22,
+          height:          22,
+          borderRadius:    4,
+          backgroundColor: "rgba(8,18,36,0.92)",
+          borderWidth:     1.5,
+          borderColor:     color,
+          alignItems:      "center",
+          justifyContent:  "center",
+        }}
       >
-        <View style={styles.visualizationShell}>
-          <ZonesGrid />
-          <LabStatusHeader />
-          <View style={styles.statusRow}>
-            <View style={styles.statusPill}>
-              <Text style={styles.statusPillLabel}>STATUS</Text>
-              <Text style={styles.statusPillValue}>{labStatus}</Text>
+        <Text style={{ fontSize: 6, color, fontWeight: "800", letterSpacing: 0.2 }}>
+          {machine.model.slice(0, 3).toUpperCase()}
+        </Text>
+      </View>
+
+      <View
+        style={{
+          position:        "absolute",
+          top:             1,
+          right:           1,
+          width:           7,
+          height:          7,
+          borderRadius:    3.5,
+          backgroundColor: color,
+          borderWidth:     1,
+          borderColor:     C.bg,
+        }}
+      />
+    </TouchableOpacity>
+  );
+}
+
+// ─── MACHINE MODAL ────────────────────────────────────────────────────────────
+function MachineModal({
+  machine, visible, onClose, plantName, sectorName,
+}: {
+  machine: Machine | null;
+  visible: boolean;
+  onClose: () => void;
+  plantName: string;
+  sectorName: string;
+}) {
+  if (!machine) return null;
+  const statusKey = getStatusKey(machine.status);
+  const color = STATUS_COLOR[statusKey];
+
+  return (
+    <Modal transparent animationType="slide" visible={visible} onRequestClose={onClose}>
+      <View style={s.overlay}>
+        <TouchableOpacity
+          style={s.dismissArea}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="Fechar detalhes da máquina"
+        />
+        <View style={s.sheet} accessibilityViewIsModal>
+          <View style={s.handle} />
+
+          <View style={s.sheetHeader}>
+            <View style={{ flex: 1, marginRight: 12 }}>
+              <Text style={s.sheetModel}>{machine.model.toUpperCase()}</Text>
+              <Text style={s.sheetName} numberOfLines={1}>{machine.name}</Text>
             </View>
-            <View style={styles.statusPill}>
-              <Text style={styles.statusPillLabel}>LAB</Text>
-              <Text style={styles.statusPillValue}>{labName}</Text>
+            <View style={[s.badge, { borderColor: color, backgroundColor: hexToRgba(color, 0.1) }]}>
+              <View style={[s.badgeDot, { backgroundColor: color }]} />
+              <Text style={[s.badgeText, { color }]}>
+                {STATUS_LABEL[statusKey]}
+              </Text>
             </View>
           </View>
-          <MetricsGrid />
-          <View style={{ height: spacing.lg }} />
+
+          <View style={s.divider} />
+
+          <View style={s.infoGrid}>
+            {[
+              { label: "Planta", value: plantName },
+              { label: "Setor", value: sectorName || "Setor sem nome" },
+              { label: "Modelo", value: machine.model },
+              { label: "Status", value: STATUS_LABEL[statusKey] },
+              { label: "Posição", value: machine.posX + " × " + machine.posY },
+            ].map((item) => (
+              <View key={item.label} style={s.infoItem}>
+                <Text style={s.infoLabel}>{item.label}</Text>
+                <Text style={s.infoValue}>{item.value}</Text>
+              </View>
+            ))}
+          </View>
+
+          <TouchableOpacity style={s.closeBtn} onPress={onClose} accessibilityRole="button" accessibilityLabel="Fechar detalhes da máquina">
+            <Text style={s.closeBtnText}>Fechar</Text>
+          </TouchableOpacity>
         </View>
-      </ScrollView>
-    </SafeAreaView>
+      </View>
+    </Modal>
   );
 }
 
-// ============================================================================
-// STYLES
-// ============================================================================
+// ─── SECTOR LAYER (SVG) ───────────────────────────────────────────────────────
+function SectorLayer({
+  sectors,
+  machines,
+  bbox,
+}: {
+  sectors:  Sector[];
+  machines: Machine[];
+  bbox:     BBox;
+}) {
+  return (
+    <Svg width={bbox.svgW} height={bbox.svgH} style={StyleSheet.absoluteFill}>
+      {/* Dot grid */}
+      {Array.from({ length: 22 }).map((_, row) =>
+        Array.from({ length: 18 }).map((_, col) => (
+          <Circle
+            key={`dot-${row}-${col}`}
+            cx={(col / 17) * bbox.svgW}
+            cy={(row / 21) * bbox.svgH}
+            r={1.2}
+            fill="rgba(100,160,220,0.13)"
+          />
+        )),
+      )}
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.white,
-  },
+      {/* Sectors */}
+      {sectors.map((sector) => {
+        const pts         = toSvgPoints(sector.points, bbox);
+        const ctr         = centroidSvg(sector.points, bbox);
+        const topY        = Math.min(...sector.points.map((p) => tx(p.Y, bbox.minY, bbox.scale, bbox.offsetY)));
+        const sectorMachines = machines.filter((m) => m.sectorId === sector.id);
+        const hasError    = sectorMachines.some((m) => getStatusKey(m.status) === "error");
+        const hasWarning  = sectorMachines.some((m) => getStatusKey(m.status) === "warning");
+        const borderColor = hasError ? C.error : hasWarning ? C.warning : sector.color;
+        const labelW      = Math.max(sector.name.length * 7 + 20, 60);
 
-  // HEADER
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.xs,
+        return (
+          <G key={sector.id}>
+            <Polygon
+              points={pts}
+              fill={hexToRgba(sector.color, 0.15)}
+              stroke={borderColor}
+              strokeWidth={1.5}
+              strokeDasharray="6,4"
+            />
+            {sector.points.map((pt, i) => (
+              <Circle
+                key={`corner-${i}`}
+                cx={tx(pt.X, bbox.minX, bbox.scale, bbox.offsetX)}
+                cy={tx(pt.Y, bbox.minY, bbox.scale, bbox.offsetY)}
+                r={3}
+                fill={borderColor}
+                opacity={0.65}
+              />
+            ))}
+            <Rect
+              x={ctr.x - labelW / 2}
+              y={topY + 7}
+              width={labelW}
+              height={16}
+              rx={4}
+              fill="rgba(8,16,32,0.78)"
+            />
+          </G>
+        );
+      })}
+    </Svg>
+  );
+}
+
+// ─── SECTOR LABELS (native RN Text — correct font rendering) ─────────────────
+function SectorLabels({ sectors, bbox }: { sectors: Sector[]; bbox: BBox }) {
+  return (
+    <>
+      {sectors.map((sector) => {
+        const ctr    = centroidSvg(sector.points, bbox);
+        const topY   = Math.min(...sector.points.map((p) => tx(p.Y, bbox.minY, bbox.scale, bbox.offsetY)));
+        const labelW = Math.max(sector.name.length * 7 + 20, 60);
+
+        return (
+          <View
+            key={`label-${sector.id}`}
+            pointerEvents="none"
+            style={{
+              position:       "absolute",
+              left:           ctr.x - labelW / 2,
+              top:            topY + 7,
+              width:          labelW,
+              height:         16,
+              alignItems:     "center",
+              justifyContent: "center",
+            }}
+          >
+            <Text
+              numberOfLines={1}
+              style={{
+                color:         sector.color,
+                fontSize:      9,
+                fontWeight:    "700",
+                letterSpacing: 0.8,
+                textTransform: "uppercase",
+              }}
+            >
+              {sector.name}
+            </Text>
+          </View>
+        );
+      })}
+    </>
+  );
+}
+
+// ─── CONSTANTS ────────────────────────────────────────────────────────────────
+const TOP_BAR_H = 112;
+const STRIP_H   = 50;
+
+// ─── MAIN SCREEN ──────────────────────────────────────────────────────────────
+export default function FloorPlanScreen() {
+  // Params recebidos via router.push({ pathname, params }) vindos de LabsScreen
+  const { plantId, labName } = useLocalSearchParams<{
+    plantId:          string;
+    labName:          string;
+    plantDescription: string;
+    scale:            string;
+    widthUnits:       string;
+    heightUnits:      string;
+  }>();
+
+  const router = useRouter();
+
+  const [plant,    setPlant]    = useState<Plant | null>(null);
+  const [sectors,  setSectors]  = useState<Sector[]>([]);
+  const [machines, setMachines] = useState<Machine[]>([]);
+  const [loading,  setLoading]  = useState(true);
+  const [error,    setError]    = useState<string | null>(null);
+  const [selected, setSelected] = useState<Machine | null>(null);
+  const [modalOn,  setModalOn]  = useState(false);
+  const [legendOn, setLegendOn] = useState(false);
+  const [cachedCatalogAt, setCachedCatalogAt] = useState<string | null>(null);
+  const [lastSyncedAt, setLastSyncedAt] = useState("");
+
+  const load = useCallback(async () => {
+    if (!plantId) {
+      setError("ID da planta não informado.");
+      setLoading(false);
+      return;
+    }
+    try {
+      setLoading(true);
+      setError(null);
+      const plantsResult = await getPlantsCached();
+      const selectedPlant = plantsResult.data.find((item) => item.id === plantId);
+      if (!selectedPlant) throw new Error("A planta selecionada não está disponível para esta conta.");
+      const [sectorsResult, machinesResult] = await Promise.all([
+        getSectorsByPlantCached(plantId),
+        getMachinesByPlantCached(plantId),
+      ]);
+      const parsedSectors: Sector[] = sectorsResult.data.map((sector) => {
+        let points: SectorPoint[];
+        try {
+          points = JSON.parse(sector.pointsJson || "[]") as SectorPoint[];
+        } catch {
+          throw new Error("O mapa contém coordenadas inválidas no setor " + sector.name + ".");
+        }
+        if (!Array.isArray(points) || points.length < 3 || points.some((point) =>
+          typeof point?.X !== "number" || typeof point?.Y !== "number" ||
+          !Number.isFinite(point.X) || !Number.isFinite(point.Y)
+        )) {
+          throw new Error("O mapa contém coordenadas inválidas no setor " + sector.name + ".");
+        }
+        return { ...sector, points };
+      });
+      const cachedDates = [plantsResult, sectorsResult, machinesResult]
+        .filter((result) => result.source === "cache" && result.cachedAt)
+        .map((result) => result.cachedAt as string)
+        .sort();
+      setPlant(selectedPlant);
+      setSectors(parsedSectors);
+      setMachines(machinesResult.data as Machine[]);
+      setCachedCatalogAt(cachedDates[0] ?? null);
+      setLastSyncedAt(new Date().toISOString());
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Não foi possível carregar os dados desta planta.");
+    } finally {
+      setLoading(false);
+    }
+  }, [plantId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const canvasH = Math.max(220, SCREEN_H - TOP_BAR_H - STRIP_H);
+
+  const bbox: BBox | null =
+    sectors.length > 0 ? computeBBox(sectors, machines, canvasH) : null;
+
+  const stats = {
+    active: machines.filter((m) => getStatusKey(m.status) === "active").length,
+    warning: machines.filter((m) => getStatusKey(m.status) === "warning").length,
+    error: machines.filter((m) => getStatusKey(m.status) === "error").length,
+    idle: machines.filter((m) => getStatusKey(m.status) === "idle").length,
+    unknown: machines.filter((m) => getStatusKey(m.status) === "unknown").length,
+  };
+
+  // ── Loading ──────────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <View style={[s.root, s.center]}>
+        <StatusBar barStyle="light-content" />
+        <ActivityIndicator color={C.sectorLabel} size="large" />
+        <Text style={s.loadingText}>Carregando planta...</Text>
+      </View>
+    );
+  }
+
+  // ── Error ────────────────────────────────────────────────────────────────
+  if (error) {
+    return (
+      <View style={[s.root, s.center]}>
+        <StatusBar barStyle="light-content" />
+        <Text style={s.errorText} accessibilityRole="alert">{error}</Text>
+        <TouchableOpacity style={s.retryBtn} onPress={() => void load()} accessibilityRole="button" accessibilityLabel="Tentar carregar o mapa novamente">
+          <Text style={s.retryText}>Tentar novamente</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  // ── Main ─────────────────────────────────────────────────────────────────
+  return (
+    <View style={s.root}>
+      <StatusBar barStyle="light-content" />
+
+      {/* ── Top bar ── */}
+      <View style={s.topBar}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
+          <TouchableOpacity onPress={() => router.push("/(tabs)/Labs")} accessibilityRole="button"
+            accessibilityLabel="Voltar para plantas" hitSlop={8} style={s.headerButton}>
+            <Ionicons name="arrow-back" size={20} color={C.muted} />
+          </TouchableOpacity>
+          <View style={{ flex: 1 }}>
+            <Text style={s.appName}>LabControl</Text>
+            <Text style={s.plantName} numberOfLines={1}>{plant?.name ?? labName ?? "Planta"}</Text>
+            <Text style={s.syncText} numberOfLines={1}>
+              {cachedCatalogAt ? "Catálogo salvo em " + formatDateTime(cachedCatalogAt) : "Atualizado em " + formatDateTime(lastSyncedAt)}
+            </Text>
+          </View>
+        </View>
+        <TouchableOpacity onPress={() => void load()} accessibilityRole="button"
+          accessibilityLabel="Atualizar dados da planta" hitSlop={8} style={s.headerButton}>
+          <Ionicons name="refresh-outline" size={20} color={C.sectorLabel} />
+        </TouchableOpacity>
+      </View>
+
+      {/* ── Status strip ── */}
+      <View style={s.strip}>
+        {([
+          { label: "Ativos", value: stats.active, color: C.active },
+          { label: "Alertas", value: stats.warning, color: C.warning },
+          { label: "Falhas", value: stats.error, color: C.error },
+          { label: "Inativos", value: stats.idle, color: C.idle },
+          { label: "Desconhecidos", value: stats.unknown, color: C.muted },
+        ] as const).map((item) => (
+          <View key={item.label} style={s.stripItem}>
+            <Text style={[s.stripVal, { color: item.color }]}>{item.value}</Text>
+            <Text style={s.stripLbl}>{item.label}</Text>
+          </View>
+        ))}
+      </View>
+
+      {/* ── Canvas ── */}
+      <View style={[s.canvas, { height: canvasH }]}>
+        {bbox ? (
+          <>
+            <SectorLayer sectors={sectors} machines={machines} bbox={bbox} />
+            <SectorLabels sectors={sectors} bbox={bbox} />
+            {machines.map((machine) => {
+              const sectorName = sectors.find((sector) => sector.id === machine.sectorId)?.name ?? "Setor sem nome";
+              return (
+                <MachineNode
+                  key={machine.id}
+                  machine={machine}
+                  bbox={bbox}
+                  accessibilityLabel={machine.name + ", " + STATUS_LABEL[getStatusKey(machine.status)] +
+                    ", planta " + (plant?.name ?? labName ?? "Planta") + ", setor " + sectorName}
+                  onPress={(selectedMachine) => { setSelected(selectedMachine); setModalOn(true); }}
+                />
+              );
+            })}
+            {machines.length === 0 ? (
+              <View style={s.canvasMessage} pointerEvents="none">
+                <Text style={s.canvasMessageText}>Nenhuma máquina cadastrada nesta planta.</Text>
+              </View>
+            ) : null}
+          </>
+        ) : (
+          <View style={s.canvasMessage}>
+            <Ionicons name="map-outline" size={30} color={C.muted} />
+            <Text style={s.canvasMessageText}>Esta planta ainda não possui áreas cadastradas no mapa.</Text>
+          </View>
+        )}
+
+        {/* Legend toggle */}
+        <TouchableOpacity
+          style={s.legendBtn}
+          onPress={() => setLegendOn((v) => !v)}
+          accessibilityRole="button"
+          accessibilityLabel={legendOn ? "Ocultar legenda do mapa" : "Mostrar legenda do mapa"}
+          accessibilityState={{ expanded: legendOn }}
+        >
+          <Text style={{ color: C.sectorLabel, fontSize: 15 }}>⬡</Text>
+        </TouchableOpacity>
+
+        {legendOn && (
+          <View style={s.legendPanel}>
+            <Text style={s.legendTitle}>LEGENDA</Text>
+            {(Object.keys(STATUS_LABEL) as MachineStatus[]).map((key) => (
+              <View key={key} style={s.legendRow}>
+                <View style={[s.legendDot, { backgroundColor: STATUS_COLOR[key] }]} />
+                <Text style={s.legendLabel}>{STATUS_LABEL[key]}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+      </View>
+
+      <MachineModal
+        machine={selected}
+        visible={modalOn}
+        plantName={plant?.name ?? labName ?? "Planta"}
+        sectorName={selected ? sectors.find((sector) => sector.id === selected.sectorId)?.name ?? "Setor sem nome" : ""}
+        onClose={() => setModalOn(false)}
+      />
+    </View>
+  );
+}
+
+// ─── STYLES ───────────────────────────────────────────────────────────────────
+const s = StyleSheet.create({
+  root:   { flex: 1, backgroundColor: C.bg },
+  center: { alignItems: "center", justifyContent: "center", gap: 12 },
+
+  loadingText: { color: C.muted, fontSize: 13, marginTop: 8 },
+  errorText:   { color: C.error, fontSize: 14, textAlign: "center", paddingHorizontal: 24 },
+  retryBtn:    { marginTop: 12, paddingHorizontal: 24, paddingVertical: 10, borderRadius: 8, borderWidth: 1, borderColor: C.panelBorder },
+  retryText:   { color: C.sectorLabel, fontSize: 13 },
+
+  topBar: {
+    flexDirection:     "row",
+    justifyContent:    "space-between",
+    alignItems:        "center",
+    paddingHorizontal: 18,
+    paddingTop:        50,
+    paddingBottom:     10,
     borderBottomWidth: 1,
-    borderBottomColor: colors.slate100,
+    borderBottomColor: C.panelBorder,
   },
+  appName:   { color: C.muted,  fontSize: 11, letterSpacing: 1.5, textTransform: "uppercase" },
+  plantName: { color: C.white,  fontSize: 17, fontWeight: "700",  marginTop: 1, maxWidth: SCREEN_W * 0.55 },
+  syncText: { color: C.muted, fontSize: 9, marginTop: 3 },
+  headerButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+  liveText:  { color: C.active, fontSize: 10, fontWeight: "700",  letterSpacing: 1.2 },
 
-  headerCenter: {
-    flex: 1,
-    marginHorizontal: spacing.md,
-    alignItems: 'center',
-  },
-
-  headerTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.slate900,
-    lineHeight: 20,
-    textAlign: 'center',
-  },
-  headerSubtitle: {
-    fontSize: 12,
-    color: colors.slate600,
-    marginTop: 2,
-    textAlign: 'center',
-  },
-
-  // SCROLL VIEW
-  scrollView: {
-    flex: 1,
-  },
-
-  scrollContent: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xs,
-    paddingBottom: spacing.lg,
-  },
-
-  visualizationShell: {
-    alignItems: 'center',
-  },
-
-  // ZONES GRID
-  zonesGrid: {
-    flexDirection: 'row',
-    gap: spacing.md,
-    marginBottom: spacing.md,
-    width: '100%',
-  },
-
-  zoneCard: {
-    flex: 1,
-    padding: spacing.md,
-    borderRadius: radius.lg,
-    borderWidth: 2,
-    minHeight: 100,
-    justifyContent: 'center',
-  },
-
-  zoneCardMain: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: colors.slate900,
-    marginBottom: spacing.xs,
-  },
-
-  zoneCardSecondary: {
-    fontSize: 11,
-    color: colors.slate600,
-    marginBottom: spacing.xs,
-  },
-
-  zoneCardTertiary: {
-    fontSize: 10,
-    color: colors.slate600,
-  },
-
-  alertTag: {
-    marginBottom: spacing.sm,
-    alignSelf: 'flex-start',
-  },
-
-  alertTagText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: colors.red,
-  },
-
-  // LAB STATUS
-  labStatusContainer: {
-    width: '100%',
-    alignItems: 'center',
-    marginBottom: spacing.xl,
-    paddingBottom: spacing.lg,
+  strip: {
+    flexDirection:     "row",
+    backgroundColor:   C.panel,
     borderBottomWidth: 1,
-    borderBottomColor: colors.slate100,
+    borderBottomColor: C.panelBorder,
+    paddingVertical:   10,
   },
+  stripItem: { flex: 1, alignItems: "center" },
+  stripVal:  { fontSize: 20, fontWeight: "700", lineHeight: 24 },
+  stripLbl:  { color: C.muted, fontSize: 10, marginTop: 1, letterSpacing: 0.4 },
 
-  labHeaderTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    marginBottom: spacing.xs,
-    justifyContent: 'center',
+  canvas: { width: SCREEN_W, backgroundColor: C.canvas },
+  canvasMessage: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 28, gap: 12 },
+  canvasMessageText: { color: C.muted, fontSize: 14, lineHeight: 20, textAlign: "center" },
+
+  legendBtn: {
+    position:        "absolute",
+    bottom:          20,
+    left:            16,
+    width:           44,
+    height:          44,
+    borderRadius:    8,
+    backgroundColor: C.panel,
+    borderWidth:     1,
+    borderColor:     C.panelBorder,
+    alignItems:      "center",
+    justifyContent:  "center",
   },
-
-  labTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.slate900,
+  legendPanel: {
+    position:        "absolute",
+    bottom:          66,
+    left:            16,
+    backgroundColor: C.panel,
+    borderWidth:     1,
+    borderColor:     C.panelBorder,
+    borderRadius:    8,
+    padding:         12,
+    minWidth:        128,
   },
+  legendTitle: { color: C.muted,  fontSize: 9,  letterSpacing: 1.2, marginBottom: 8, fontWeight: "600" },
+  legendRow:   { flexDirection: "row", alignItems: "center", marginBottom: 6, gap: 8 },
+  legendDot:   { width: 8, height: 8, borderRadius: 4 },
+  legendLabel: { color: C.white, fontSize: 12 },
 
-  badgeNormal: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: 4,
-    borderRadius: radius.md,
-    backgroundColor: colors.greenLight,
+  overlay: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.6)" },
+  dismissArea: { flex: 1 },
+  sheet: {
+    backgroundColor:      C.panel,
+    borderTopLeftRadius:  20,
+    borderTopRightRadius: 20,
+    padding:              20,
+    paddingBottom:        36,
+    borderTopWidth:       1,
+    borderTopColor:       C.panelBorder,
   },
-
-  badgeNormalText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: colors.green,
+  handle: {
+    width:           36,
+    height:          4,
+    borderRadius:    2,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    alignSelf:       "center",
+    marginBottom:    16,
   },
-
-  labSubtitle: {
-    fontSize: 12,
-    color: colors.slate600,
-    textAlign: 'center',
-  },
-
-  statusRow: {
-    flexDirection: 'row',
-    gap: spacing.md,
-    marginBottom: spacing.xl,
-    width: '100%',
-    justifyContent: 'center',
-  },
-
-  statusPill: {
-    flex: 1,
-    maxWidth: 150,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.full,
-    backgroundColor: colors.slate100,
-    alignItems: 'center',
-  },
-
-  statusPillLabel: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: colors.slate600,
-    letterSpacing: 0.6,
-    marginBottom: 2,
-  },
-
-  statusPillValue: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.slate900,
-    textAlign: 'center',
-  },
-
-  // METRICS
-  metricsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.md,
-    marginBottom: spacing.xl,
-    width: '100%',
-    justifyContent: 'center',
-  },
-
-  metricCard: {
-    width: (width - spacing.lg * 2 - spacing.md) / 2,
-    backgroundColor: colors.slate100,
-    borderRadius: radius.lg,
-    padding: spacing.md,
-  },
-
-  metricIconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: radius.lg,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-  },
-
-  metricLabel: {
-    fontSize: 10,
-    color: colors.slate600,
-    fontWeight: '500',
-    marginBottom: spacing.xs,
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
-  },
-
-  metricValue: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.slate900,
-    marginBottom: spacing.xs,
-    lineHeight: 22,
-  },
-
-  metricSubtitle: {
-    fontSize: 10,
-    color: colors.slate600,
-  },
-
-
+  sheetHeader:  { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 },
+  sheetModel:   { color: C.muted,  fontSize: 11, letterSpacing: 1.5, marginBottom: 3 },
+  sheetName:    { color: C.white,  fontSize: 20, fontWeight: "700" },
+  badge:        { flexDirection: "row", alignItems: "center", gap: 6, borderWidth: 1, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 5 },
+  badgeDot:     { width: 6, height: 6, borderRadius: 3 },
+  badgeText:    { fontSize: 12, fontWeight: "600" },
+  divider:      { height: 1, backgroundColor: C.panelBorder, marginBottom: 16 },
+  infoGrid:     { flexDirection: "row", flexWrap: "wrap", marginBottom: 24, gap: 12 },
+  infoItem:     { width: "45%", gap: 3 },
+  infoLabel:    { color: C.muted,  fontSize: 10, letterSpacing: 0.8, textTransform: "uppercase" },
+  infoValue:    { color: C.white,  fontSize: 15, fontWeight: "600" },
+  closeBtn:     { backgroundColor: "rgba(80,160,255,0.1)", borderRadius: 10, borderWidth: 1, borderColor: C.panelBorder, paddingVertical: 13, alignItems: "center" },
+  closeBtnText: { color: C.sectorLabel, fontSize: 14, fontWeight: "600", letterSpacing: 0.5 },
 });
