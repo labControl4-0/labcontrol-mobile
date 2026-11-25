@@ -32,7 +32,7 @@ async function createV1Database() {
   forgetDatabaseConnection();
 }
 
-it("migra da v1 para a v2 mantendo as ocorrências e marcando as incertas para conferência", async () => {
+it("migra da v1 até a versão atual mantendo as ocorrências e marcando as incertas para conferência", async () => {
   await createV1Database();
 
   const db = await getDatabase();
@@ -41,8 +41,8 @@ it("migra da v1 para a v2 mantendo as ocorrências e marcando as incertas para c
     "SELECT description, sync_status, needs_check FROM occurrences ORDER BY id"
   );
 
-  expect(SCHEMA_VERSION).toBe(2);
-  expect(version?.user_version).toBe(2);
+  expect(SCHEMA_VERSION).toBe(4);
+  expect(version?.user_version).toBe(4);
   expect(rows).toEqual([
     { description: "Nunca tentada", sync_status: "pending", needs_check: 0 },
     { description: "Já tentada", sync_status: "pending", needs_check: 1 },
@@ -60,5 +60,31 @@ it("a v2 aceita o estado de conflito e continua recusando estados desconhecidos"
   ).resolves.toBeDefined();
   await expect(
     db.runAsync("UPDATE occurrences SET sync_status = 'concluida' WHERE id = ?", [id])
+  ).rejects.toThrow(/CHECK constraint/);
+});
+
+it("o schema atual deixa as ocorrências antigas sem localização e recusa coordenadas fora da faixa", async () => {
+  await createV1Database();
+  const db = await getDatabase();
+  const id = "00000000-0000-4000-8000-000000000001";
+
+  const before = await db.getFirstAsync<{ latitude: number | null; longitude: number | null }>(
+    "SELECT latitude, longitude FROM occurrences WHERE id = ?",
+    [id]
+  );
+  expect(before).toEqual({ latitude: null, longitude: null });
+
+  await expect(
+    db.runAsync("UPDATE occurrences SET latitude = -23.5, longitude = -47.4 WHERE id = ?", [id])
+  ).resolves.toBeDefined();
+  await expect(
+    db.runAsync("UPDATE occurrences SET latitude = 91 WHERE id = ?", [id])
+  ).rejects.toThrow(/CHECK constraint/);
+  await expect(
+    db.runAsync(
+      `INSERT INTO machine_locations (user_id, machine_id, machine_name, latitude, longitude, captured_at)
+       VALUES ('u-1', 'm-1', 'Torno', -23.5, -181, '2026-11-16T13:00:00.000Z')`,
+      []
+    )
   ).rejects.toThrow(/CHECK constraint/);
 });

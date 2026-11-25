@@ -3,6 +3,7 @@
 // Estados e transições: docs/MATRIZ_CENARIOS_OFFLINE.md.
 import * as Crypto from "expo-crypto";
 
+import { isValidCoordinates } from "../geo/distance";
 import { getDatabase } from "./database";
 import type { SyncStatus } from "./schema";
 import { MAX_AUTO_RETRIES, nextAttemptDelay } from "./syncPolicy";
@@ -22,6 +23,17 @@ export type ConflictInfo = {
   server: ServerVersion | null;
 };
 
+/**
+ * Onde o TÉCNICO estava ao registrar a ocorrência (não é a posição da
+ * máquina). Só existe se o usuário escolheu anexar a localização.
+ */
+export type OccurrenceLocation = {
+  latitude: number;
+  longitude: number;
+  /** Precisão em metros, quando o aparelho informa. */
+  accuracy: number | null;
+};
+
 export type Occurrence = {
   id: string;
   userId: string;
@@ -32,6 +44,7 @@ export type Occurrence = {
   eventType: string;
   description: string;
   occurredAt: string;
+  location: OccurrenceLocation | null;
   syncStatus: SyncStatus;
   attempts: number;
   /** Falhas temporárias seguidas desde o último sucesso. */
@@ -60,6 +73,8 @@ export type NewOccurrence = {
   eventType: string;
   description: string;
   occurredAt: string;
+  /** Opcional: só com consentimento do usuário no formulário. */
+  location?: OccurrenceLocation | null;
 };
 
 /** Campos que o usuário pode editar antes do envio. */
@@ -75,6 +90,9 @@ type OccurrenceRow = {
   event_type: string;
   description: string;
   occurred_at: string;
+  latitude: number | null;
+  longitude: number | null;
+  location_accuracy: number | null;
   sync_status: SyncStatus;
   attempts: number;
   retry_count: number;
@@ -98,6 +116,28 @@ function parseConflict(json: string | null): ConflictInfo | null {
   }
 }
 
+function locationFromRow(row: OccurrenceRow): OccurrenceLocation | null {
+  if (row.latitude === null || row.longitude === null) return null;
+  return {
+    latitude: row.latitude,
+    longitude: row.longitude,
+    accuracy: row.location_accuracy,
+  };
+}
+
+/** Valida a localização opcional. Coordenada fora da faixa é erro, não é descartada. */
+function normalizeLocation(location: OccurrenceLocation | null | undefined): OccurrenceLocation | null {
+  if (!location) return null;
+  if (!isValidCoordinates(location)) {
+    throw new Error("Localização inválida: latitude entre -90 e 90 e longitude entre -180 e 180.");
+  }
+  const accuracy =
+    typeof location.accuracy === "number" && Number.isFinite(location.accuracy) && location.accuracy >= 0
+      ? location.accuracy
+      : null;
+  return { latitude: location.latitude, longitude: location.longitude, accuracy };
+}
+
 function fromRow(row: OccurrenceRow): Occurrence {
   return {
     id: row.id,
@@ -109,6 +149,7 @@ function fromRow(row: OccurrenceRow): Occurrence {
     eventType: row.event_type,
     description: row.description,
     occurredAt: row.occurred_at,
+    location: locationFromRow(row),
     syncStatus: row.sync_status,
     attempts: row.attempts,
     retryCount: row.retry_count,
@@ -130,6 +171,7 @@ const truncate = (text: string) => text.slice(0, MAX_ERROR_LENGTH);
 
 /** Grava a ocorrência como pendente, com UUID v4 gerado no aparelho. */
 export async function createOccurrence(input: NewOccurrence): Promise<Occurrence> {
+  const location = normalizeLocation(input.location);
   const db = await getDatabase();
   const now = nowIso();
   const id = Crypto.randomUUID();
@@ -137,9 +179,9 @@ export async function createOccurrence(input: NewOccurrence): Promise<Occurrence
   await db.runAsync(
     `INSERT INTO occurrences (
        id, user_id, machine_id, machine_name, sector_id, sector_name,
-       event_type, description, occurred_at, sync_status, attempts,
-       created_at, updated_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?)`,
+       event_type, description, occurred_at, latitude, longitude, location_accuracy,
+       sync_status, attempts, created_at, updated_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?)`,
     [
       id,
       input.userId,
@@ -150,6 +192,9 @@ export async function createOccurrence(input: NewOccurrence): Promise<Occurrence
       input.eventType,
       input.description,
       input.occurredAt,
+      location?.latitude ?? null,
+      location?.longitude ?? null,
+      location?.accuracy ?? null,
       now,
       now,
     ]
@@ -400,6 +445,7 @@ export async function resolveConflictKeepBoth(
       eventType: current.eventType,
       description: current.description,
       occurredAt: current.occurredAt,
+      location: current.location,
     });
   });
 

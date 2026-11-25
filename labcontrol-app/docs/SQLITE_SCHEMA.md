@@ -75,6 +75,32 @@ A tabela `occurrences` é recriada, porque o SQLite não altera um `CHECK` exist
 
 Estados, gatilhos, backoff, duplicidade e conflitos: `docs/MATRIZ_CENARIOS_OFFLINE.md`.
 
+### Versão 3 (geolocalização)
+
+Detalhes do fluxo: `docs/GEOLOCALIZACAO.md`.
+
+#### `machine_locations` (nova)
+
+Posição de uma máquina fixada no aparelho pelo botão "Fixar aqui", enquanto a API não tem latitude/longitude em `Machine`.
+
+| Coluna | Tipo | Obrigatório | Descrição |
+|---|---|---|---|
+| `user_id` | TEXT PK | sim | Dono do registro. Toda consulta filtra por ele. |
+| `machine_id` | TEXT PK | sim | Id da máquina na API |
+| `machine_name` | TEXT | sim | Nome exibido |
+| `plant_id` | TEXT | não | Laboratório da máquina |
+| `latitude` | REAL | sim | `CHECK` entre -90 e 90 |
+| `longitude` | REAL | sim | `CHECK` entre -180 e 180 |
+| `accuracy` | REAL | não | Precisão do GPS em metros, quando o aparelho informa |
+| `captured_at` | TEXT | sim | Data/hora ISO da leitura |
+
+#### `occurrences` (colunas novas, todas opcionais)
+
+| Coluna | Descrição |
+|---|---|
+| `latitude`, `longitude` | Onde o **técnico** estava ao registrar, só se ele ligou "Anexar minha localização". `NULL` nas ocorrências antigas. |
+| `location_accuracy` | Precisão da leitura, em metros |
+
 ## Estados de sincronização (MOB-03)
 
 > Atualizado no MOB-04: veja a máquina de estados completa, com `conflict` e a conferência antes do reenvio, em `docs/MATRIZ_CENARIOS_OFFLINE.md`.
@@ -139,6 +165,6 @@ As pendentes são mantidas no logout porque são trabalho que ainda não chegou 
 | Backend parado não mostra pendente como concluída | `offlineSync.test.ts` › backend parado (rede, 503, timeout) |
 | Schema versionado | `offlineDatabase.test.ts` › schema SQLite |
 | Token fora do SQLite | `offlineCache.test.ts` › o token nunca é gravado no arquivo SQLite |
-## Migração v3 — localização pendente de planta
+## Migração v4 — localização pendente de planta
 
 A tabela `plant_location_drafts` mantém a última captura explícita de cada planta enquanto o backend está indisponível. A chave composta `(user_id, plant_id)` separa as contas e substitui uma captura anterior da mesma planta. Latitude e longitude têm limites geográficos; `accuracy_m` guarda a precisão reportada pelo sistema quando disponível. O envio usa `PUT /api/plants/{id}/location`; a linha só é removida após resposta bem-sucedida. Não há rastreamento em segundo plano.

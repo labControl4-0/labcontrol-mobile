@@ -29,6 +29,19 @@ async function migrate(db: Database) {
     const next = version + 1;
     await db.withTransactionAsync(async () => {
       await db.execAsync(MIGRATIONS[version]);
+      if (next === 4) {
+        const columns = await db.getAllAsync<{ name: string }>("PRAGMA table_info(occurrences)");
+        const names = new Set(columns.map((column) => column.name));
+        if (!names.has("latitude")) {
+          await db.execAsync("ALTER TABLE occurrences ADD COLUMN latitude REAL CHECK (latitude IS NULL OR latitude BETWEEN -90 AND 90)");
+        }
+        if (!names.has("longitude")) {
+          await db.execAsync("ALTER TABLE occurrences ADD COLUMN longitude REAL CHECK (longitude IS NULL OR longitude BETWEEN -180 AND 180)");
+        }
+        if (!names.has("location_accuracy")) {
+          await db.execAsync("ALTER TABLE occurrences ADD COLUMN location_accuracy REAL");
+        }
+      }
       await db.execAsync(`PRAGMA user_version = ${next}`);
     });
     version = next;

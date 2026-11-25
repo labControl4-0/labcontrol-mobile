@@ -9,6 +9,7 @@ import { startAutoSync, startReconnectSync } from "../services/occurrenceSync";
 import { ensureAndroidChannel, installNotificationHandler } from "../lib/push/notifications";
 import { setupPushNotifications } from "../services/pushRegistration";
 import { startPushNavigation } from "../services/pushNavigation";
+import { startPlantLocationAutoSync } from "../services/plantLocationSync";
 
 export default function RootLayout() {
   const router = useRouter();

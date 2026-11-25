@@ -43,16 +43,22 @@
       "expo-secure-store",
       "expo-sqlite",
       [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "O LabControl usa sua localização quando você pede para localizar máquinas ou registrar a posição de uma planta ou ocorrência.",
+          "isAndroidBackgroundLocationEnabled": false,
+          "isAndroidForegroundServiceEnabled": false,
+          "locationAlwaysAndWhenInUsePermission": false,
+          "locationAlwaysPermission": false,
+          "locationFullAccuracyPermission": false,
+          "motionUsagePermission": false
+        }
+      ],
+      [
         "expo-notifications",
         {
           "color": "#2563EB",
           "defaultChannel": "machine-alerts"
-        }
-      ],
-      [
-        "expo-location",
-        {
-          "locationWhenInUsePermission": "Permita que o LabControl use sua localização somente quando você pedir para registrar a posição geográfica da planta."
         }
       ]
     ],

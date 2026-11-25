@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
   SafeAreaView,
   View,
@@ -9,8 +9,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import Toast from "react-native-toast-message";
+import { useFocusEffect, useRouter, type Href } from "expo-router";
 
 import { BottomNavBar } from "../../components/BottomNavBar";
 import { getPlants } from "../../../lib/plants";
@@ -21,30 +20,33 @@ export default function LabsScreen() {
 
   const [labs, setLabs] = useState<Plant[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   const loadPlants = useCallback(async () => {
+    setLoading(true);
+    setError("");
+
     try {
-      setLoading(true);
-
-      const plants = await getPlants();
-
-      setLabs(plants);
-    } catch (error) {
-      console.error(error);
-
-      Toast.show({
-        type: "error",
-        text1: "Erro ao carregar laboratórios",
-        text2: "Não foi possível buscar os dados.",
-      });
+      setLabs(await getPlants());
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Não foi possível carregar os laboratórios."
+      );
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    loadPlants();
-  }, [loadPlants]);
+  useFocusEffect(
+    useCallback(() => {
+      void loadPlants();
+    }, [loadPlants])
+  );
+
+  const openCreateScreen = () =>
+    router.push("/(tabs)/Labs/create" as Href);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -59,11 +61,19 @@ export default function LabsScreen() {
 
           <Text style={styles.title}>Labs</Text>
 
-          <View style={styles.headerSpacer} />
+          <TouchableOpacity
+            style={styles.createButton}
+            onPress={openCreateScreen}
+            accessibilityRole="button"
+            accessibilityLabel="Criar laboratório"
+          >
+            <Ionicons name="add" size={20} color="#FFFFFF" />
+            <Text style={styles.createButtonText}>Novo</Text>
+          </TouchableOpacity>
         </View>
 
         <Text style={styles.subtitle}>
-          Temperature, humidity, and operating status across all labs.
+          Gerencie os laboratórios cadastrados na sua conta.
         </Text>
 
         <TouchableOpacity
@@ -89,6 +99,19 @@ export default function LabsScreen() {
               Carregando laboratórios...
             </Text>
           </View>
+        ) : error ? (
+          <View style={styles.emptyContainer}>
+            <Ionicons name="cloud-offline-outline" size={42} color="#9CA3AF" />
+            <Text style={styles.emptyTitle}>Não foi possível carregar</Text>
+            <Text style={styles.emptySubtitle}>{error}</Text>
+            <TouchableOpacity
+              style={styles.retryButton}
+              onPress={() => void loadPlants()}
+              accessibilityRole="button"
+            >
+              <Text style={styles.retryButtonText}>Tentar novamente</Text>
+            </TouchableOpacity>
+          </View>
         ) : (
           <View style={styles.list}>
             {labs.length === 0 ? (
@@ -106,6 +129,15 @@ export default function LabsScreen() {
                 <Text style={styles.emptySubtitle}>
                   Você ainda não possui plantas cadastradas.
                 </Text>
+                <TouchableOpacity
+                  style={styles.emptyCreateButton}
+                  onPress={openCreateScreen}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.emptyCreateButtonText}>
+                    Cadastrar laboratório
+                  </Text>
+                </TouchableOpacity>
               </View>
             ) : (
               labs.map((lab) => (
@@ -171,8 +203,20 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
 
-  headerSpacer: {
-    width: 22,
+  createButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    backgroundColor: "#2563EB",
+  },
+
+  createButtonText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "700",
   },
 
   title: {
@@ -248,23 +292,10 @@ const styles = StyleSheet.create({
     color: "#111827",
   },
 
-  cardStatus: {
-    marginTop: 8,
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#2563EB",
-  },
-
   cardDetail: {
     marginTop: 4,
     fontSize: 12,
     color: "#6B7280",
-  },
-
-  cardMeta: {
-    marginTop: 8,
-    fontSize: 11,
-    color: "#9CA3AF",
   },
 
   emptyContainer: {
@@ -285,5 +316,32 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#6B7280",
     textAlign: "center",
+  },
+
+  emptyCreateButton: {
+    marginTop: 18,
+    backgroundColor: "#2563EB",
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+
+  emptyCreateButtonText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+
+  retryButton: {
+    marginTop: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: "#E5E7EB",
+  },
+
+  retryButtonText: {
+    color: "#1F2937",
+    fontWeight: "700",
   },
 });
