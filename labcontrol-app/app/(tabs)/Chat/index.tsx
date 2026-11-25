@@ -154,7 +154,7 @@ export default function ChatScreen() {
                 <ActivityIndicator size="small" color="#6B7280" />
               </View>
             </View>
-          ) : null
+          ) : undefined
         }
       />
 

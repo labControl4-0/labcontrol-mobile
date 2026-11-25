@@ -296,7 +296,7 @@ function SectorLayer({
   bbox:     BBox;
 }) {
   return (
-    <Svg width={bbox.svgW} height={bbox.svgH} style={StyleSheet.absoluteFillObject}>
+    <Svg width={bbox.svgW} height={bbox.svgH} style={StyleSheet.absoluteFill}>
       {/* Dot grid */}
       {Array.from({ length: 22 }).map((_, row) =>
         Array.from({ length: 18 }).map((_, col) => (
@@ -492,7 +492,7 @@ export default function FloorPlanScreen() {
   if (loading) {
     return (
       <View style={[s.root, s.center]}>
-        <StatusBar barStyle="light-content" backgroundColor={C.bg} />
+        <StatusBar barStyle="light-content" />
         <ActivityIndicator color={C.sectorLabel} size="large" />
         <Text style={s.loadingText}>Carregando planta...</Text>
       </View>
@@ -503,7 +503,7 @@ export default function FloorPlanScreen() {
   if (error) {
     return (
       <View style={[s.root, s.center]}>
-        <StatusBar barStyle="light-content" backgroundColor={C.bg} />
+        <StatusBar barStyle="light-content" />
         <Text style={s.errorText} accessibilityRole="alert">{error}</Text>
         <TouchableOpacity style={s.retryBtn} onPress={() => void load()} accessibilityRole="button" accessibilityLabel="Tentar carregar o mapa novamente">
           <Text style={s.retryText}>Tentar novamente</Text>
@@ -515,7 +515,7 @@ export default function FloorPlanScreen() {
   // ── Main ─────────────────────────────────────────────────────────────────
   return (
     <View style={s.root}>
-      <StatusBar barStyle="light-content" backgroundColor={C.bg} />
+      <StatusBar barStyle="light-content" />
 
       {/* ── Top bar ── */}
       <View style={s.topBar}>
