@@ -289,8 +289,9 @@ describe("proteção do token", () => {
     await unregisterPushDevice();
     await clearAuthSession();
 
-    expect(fetchMock.mock.calls[0][0]).toBe(`${API_URL}/devices/${encodeURIComponent(PUSH_TOKEN)}`);
+    expect(fetchMock.mock.calls[0][0]).toBe(`${API_URL}/devices`);
     expect(fetchMock.mock.calls[0][1].method).toBe("DELETE");
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ pushToken: PUSH_TOKEN });
     expect(await getPushRegistration()).toBeNull();
     expect(secureStoreContents().size).toBe(0);
   });
@@ -359,7 +360,7 @@ describe("registro em andamento durante o logout", () => {
 
     expect(await registering).toEqual({ status: "no_session" });
     const del = net.seen.find((c) => c.method === "DELETE");
-    expect(del?.url).toBe(`${API_URL}/devices/${encodeURIComponent(PUSH_TOKEN)}`);
+    expect(del?.url).toBe(`${API_URL}/devices`);
     expect(del?.auth).toBe(`Bearer ${TOKEN}`);
     expect(await getPushRegistration()).toBeNull();
   });

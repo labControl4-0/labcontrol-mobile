@@ -5,6 +5,7 @@ import {
 import {
   parseMachineEventPushPayload,
   routeForMachineEventPush,
+  type MachineEventPushPayload,
 } from "../lib/push/notificationPayload";
 import {
   navigateFromNotificationData,
@@ -48,7 +49,7 @@ jest.mock("expo-notifications", () => {
   };
 });
 
-const VALID_PAYLOAD = {
+const VALID_PAYLOAD: MachineEventPushPayload = {
   categoria: "failure",
   avisoId: "2e1a1e01-6cb0-4c5e-8c49-5f35ee6ec121",
   machineId: "3f1c2a9e-0000-4000-8000-000000000001",

@@ -31,7 +31,13 @@ function deviceBody(pushToken: string) {
   return JSON.stringify({ pushToken, platform: Platform.OS });
 }
 
-const devicePath = (pushToken: string) => `/devices/${encodeURIComponent(pushToken)}`;
+function removeDevice(pushToken: string, authToken?: string) {
+  return apiFetch("/devices", {
+    method: "DELETE",
+    body: JSON.stringify({ pushToken }),
+    authToken,
+  });
+}
 
 // Coordenação entre registro e logout. Um registro pode estar esperando a
 // resposta do POST quando o usuário sai da conta (ex.: o registro silencioso
@@ -121,7 +127,7 @@ async function runSetup(options: { prompt?: boolean; force?: boolean }): Promise
     current.token === sessionToken;
 
   if (!stillSameSession) {
-    await apiFetch(devicePath(token.token), { method: "DELETE", authToken: sessionToken }).catch(
+    await removeDevice(token.token, sessionToken).catch(
       () => undefined
     );
     return { status: "no_session" };
@@ -141,14 +147,21 @@ export async function unregisterPushDevice(): Promise<void> {
   // eles mesmos removem o aparelho no servidor. O logout espera por eles
   // (limitado pelo timeout das requisições) para a remoção usar a sessão válida.
   registrationGeneration += 1;
-  await Promise.race([
-    Promise.allSettled([...inFlight]),
-    new Promise((resolve) => setTimeout(resolve, LOGOUT_WAIT_MS)),
-  ]);
+  let logoutTimer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      Promise.allSettled([...inFlight]),
+      new Promise<void>((resolve) => {
+        logoutTimer = setTimeout(resolve, LOGOUT_WAIT_MS);
+      }),
+    ]);
+  } finally {
+    if (logoutTimer !== undefined) clearTimeout(logoutTimer);
+  }
 
   const stored = await getPushRegistration();
   if (stored) {
-    await apiFetch(devicePath(stored.pushToken), { method: "DELETE" }).catch(() => undefined);
+    await removeDevice(stored.pushToken).catch(() => undefined);
   }
   await clearPushRegistration();
 }

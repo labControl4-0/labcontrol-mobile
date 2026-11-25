@@ -22,7 +22,7 @@ Expo Push Service → FCM (credencial FCM V1 no EAS) → Android
 |---|---|
 | `lib/push/notifications.ts` | Handler de exibição, canal Android, permissão, `getExpoPushTokenAsync`, notificação local |
 | `lib/push/pushStore.ts` | Registro do token no armazenamento seguro e máscara para a tela |
-| `services/pushRegistration.ts` | Permissão → token → `POST /devices`; `DELETE /devices/{token}` no logout |
+| `services/pushRegistration.ts` | Permissão → token → `POST /devices`; `DELETE /devices` no logout |
 | `app/components/PushSetupCard.tsx` | Cartão na tela **Notificações**: Ativar, Notificação local, token mascarado |
 | `app/_layout.tsx` | Handler, canal, registro silencioso e listeners de recebimento/clique |
 | `lib/push/notificationPayload.ts` | Validação estrita de categoria, IDs e origem; rota interna fixa |
@@ -43,7 +43,7 @@ Expo Push Service → FCM (credencial FCM V1 no EAS) → Android
   - fica no SecureStore (Keystore), como o token de sessão; nunca no AsyncStorage, no SQLite ou nos logs;
   - a tela mostra só o começo e o fim: `ExponentPushToken[abcd••••wxyz]`;
   - o registro vai autenticado, para o backend associar o token ao usuário (BE-07);
-  - no logout, o app pede `DELETE /devices/{token}` e apaga o token local. No 401, apaga o local.
+  - no logout, o app pede `DELETE /devices` e apaga o token local. No 401, apaga o local.
 - **Troca de usuário:** o mesmo token é registrado de novo para o usuário que entrou.
 
 ### Contrato com a API .NET (proposta para o BE-07)
@@ -59,10 +59,10 @@ Content-Type: application/json
 ```
 
 - **Resposta esperada:** 200 ou 201. Registrar o mesmo token de novo atualiza o registro, sem duplicar. Se o token já pertencer a outro usuário, ele passa para o usuário autenticado.
-- **Remoção** (o app já chama no logout e ignora falhas): `DELETE /api/devices/{pushToken}` (URL-encoded) remove o aparelho do usuário autenticado.
+- **Remoção** (o app já chama no logout e ignora falhas): `DELETE /api/devices` com corpo JSON contendo pushToken remove o aparelho do usuário autenticado.
 - **No C#:** um `RegisterDeviceDto { string PushToken; string Platform }` funciona sem ajuste, porque o ASP.NET lê o JSON sem diferenciar maiúsculas. O controller precisa de `[Authorize]` e do `userId` vindo do JWT, como no `MachineEventsController`.
 
-A API atual ainda não tem essa rota. Enquanto o BE-07 não sai, o cartão mostra "Token gerado, mas não registrado: o servidor ainda não tem a rota de registro de dispositivos (BE-07)", e o app tenta de novo na próxima abertura.
+Este fluxo requer a branch feature/BE-07-expo-push da API .NET.
 
 ## Credenciais fora do Git
 
@@ -146,15 +146,7 @@ Use uma conta de teste e não mostre o token inteiro nem a URL real do servidor.
 
 ### Registro contra a API .NET real (5/11/2026)
 
-O teste `e2e/dotnetDevice.e2e.test.ts` sobe o processo real da API (`LabControlApi.dll`) com um Postgres descartável. Ele cria um usuário sintético, faz login pelo app e roda o registro com o código real do app; só o módulo nativo é simulado, com um token **sintético**. Resultado com a API atual (sem a rota do BE-07):
-
-```
-√ sem a rota do BE-07, o app avisa e não marca o aparelho como registrado
-√ a rota é chamada com sessão válida: o 404 não derruba o login
-√ logout não quebra mesmo sem a rota de remoção
-```
-
-Quando o BE-07 entrar, troque a expectativa do primeiro caso para `status: "registered"` e confira o token na tabela de dispositivos.
+O teste `dotnetDevice.e2e.test.ts` usa um Postgres descartável e um token sintético para verificar cadastro, validação e remoção na API .NET.
 
 Para repetir, use o mesmo preparo do `backendSync.e2e.test.ts` (ver `docs/MATRIZ_CENARIOS_OFFLINE.md`) e rode:
 
