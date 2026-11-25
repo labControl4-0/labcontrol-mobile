@@ -66,6 +66,22 @@ export default function LabsScreen() {
           Temperature, humidity, and operating status across all labs.
         </Text>
 
+        <TouchableOpacity
+          accessibilityRole="button"
+          style={styles.mapButton}
+          activeOpacity={0.85}
+          onPress={() => router.push("/PlantLocationsMap")}
+        >
+          <Ionicons name="map-outline" size={22} color="#2563EB" />
+          <View style={styles.mapButtonCopy}>
+            <Text style={styles.mapButtonTitle}>Mapa geográfico</Text>
+            <Text style={styles.mapButtonSubtitle}>
+              Registrar e consultar a localização das plantas
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+        </TouchableOpacity>
+
         {loading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#2563EB" />
@@ -170,6 +186,32 @@ const styles = StyleSheet.create({
     color: "#6B7280",
     lineHeight: 20,
     marginBottom: 16,
+  },
+
+  mapButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 15,
+    marginBottom: 18,
+  },
+
+  mapButtonCopy: {
+    flex: 1,
+  },
+
+  mapButtonTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#111827",
+  },
+
+  mapButtonSubtitle: {
+    marginTop: 4,
+    fontSize: 11,
+    color: "#6B7280",
   },
 
   loadingContainer: {

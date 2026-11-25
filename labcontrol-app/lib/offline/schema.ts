@@ -90,6 +90,20 @@ export const MIGRATIONS: readonly string[] = [
   CREATE INDEX idx_occurrences_user_status
     ON occurrences (user_id, sync_status, created_at);
   `,
+,
+
+  // v3 (geolocalização): posição da planta capturada explicitamente e aguardando envio.
+  `
+  CREATE TABLE plant_location_drafts (
+    user_id      TEXT NOT NULL,
+    plant_id     TEXT NOT NULL,
+    latitude     REAL NOT NULL CHECK (latitude >= -90 AND latitude <= 90),
+    longitude    REAL NOT NULL CHECK (longitude >= -180 AND longitude <= 180),
+    accuracy_m   REAL CHECK (accuracy_m IS NULL OR accuracy_m >= 0),
+    captured_at  TEXT NOT NULL,
+    PRIMARY KEY (user_id, plant_id)
+  );
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

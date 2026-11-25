@@ -6,6 +6,8 @@ export interface Plant {
     scale: number;
     widthUnits: number;
     heightUnits: number;
+    latitude?: number | null;
+    longitude?: number | null;
     createdAt: string;
     updatedAt: string;
 }

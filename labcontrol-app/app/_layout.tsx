@@ -62,6 +62,7 @@ export default function RootLayout() {
   // (respeitando o backoff), e uma vez sempre que a conexão volta.
   useEffect(() => startAutoSync(), []);
   useEffect(() => startReconnectSync(expoNetworkSource), []);
+  useEffect(() => startPlantLocationAutoSync(), []);
 
   useEffect(() => {
     // Sessão expirada (401): api.ts já limpou a sessão; aqui só voltamos ao login.

@@ -12,6 +12,7 @@ Este documento define onde cada dado do app fica no aparelho, por quanto tempo f
 | Perfil (id, nome, e-mail) | **Sessão** (dado pessoal) | AsyncStorage, chave `@labcontrol:profile`, sem o token | Até o logout ou o 401 | Logout, 401 e sessão incompleta |
 | Foto de perfil (URI local) | **Cache do usuário** | AsyncStorage, `@labcontrol:cache:<userId>:profileImageUri` | 30 dias | Logout, 401, troca de usuário e prazo vencido |
 | Plantas, máquinas e setores para uso offline | **Cache do usuário, temporário** | SQLite `labcontrol.db`, tabela `cache_entries` (`lib/offline/cacheStore.ts`) | 7 dias | Logout, 401, troca de usuário e prazo vencido |
+| Posição geográfica da planta aguardando envio | **Trabalho do usuário não sincronizado** (posição fixa da instalação, capturada após ação explícita) | SQLite, tabela `plant_location_drafts`, sempre com `user_id` | Até sincronizar ou ser substituída | Mantida no logout e no 401; só o dono pode retomar o envio |
 | Ocorrência de máquina ainda não enviada (`pending`, `failed`) | **Trabalho do usuário não sincronizado** | SQLite, tabela `occurrences` | Até ser enviada | **Mantida** no logout e no 401, visível só para o dono |
 | Ocorrência de máquina já enviada (`synced`) | **Cópia local** | SQLite, tabela `occurrences` | 30 dias | Logout, 401 e prazo vencido |
 | Chaves de versões anteriores (`@labcontrol:session`, `@labcontrol:token`, `@labcontrol:user`, `profile_image_uri`) | **Legado** | AsyncStorage | Nenhuma | Abertura do app, login e logout |
@@ -39,11 +40,11 @@ Limitação: qualquer script da página consegue ler o `sessionStorage`. Por iss
 
 Desde o MOB-03, o app usa o `expo-sqlite` (schema em `docs/SQLITE_SCHEMA.md`). Regras:
 
-- o banco só recebe as classes de cache e de ocorrências acima, nunca o token;
+- o banco só recebe as classes de cache, ocorrências e localizações pendentes acima, nunca o token;
 - toda linha tem `user_id`, e toda consulta filtra por ele;
 - o cache só aceita as chaves permitidas (`plants`, `machines:<id>`, `sectors:<id>`);
 - todo cache tem prazo, e as ocorrências enviadas saem do aparelho em 30 dias;
-- o logout apaga o cache e as ocorrências enviadas. As ocorrências ainda não enviadas ficam no aparelho, porque apagá-las perderia trabalho que não chegou ao servidor. Antes de sair, o app avisa quantas existem.
+- o logout apaga o cache e as ocorrências enviadas. As ocorrências e localizações de plantas ainda não enviadas ficam no aparelho, porque apagá-las perderia trabalho que não chegou ao servidor. Antes de sair, o app avisa quantas existem.
 
 O teste `noTokenLeak.test.ts` falha se um arquivo que importa `expo-sqlite` acessar o token ou a sessão. O teste `offlineCache.test.ts` procura o token dentro do arquivo do banco.
 

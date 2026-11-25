@@ -139,3 +139,6 @@ As pendentes são mantidas no logout porque são trabalho que ainda não chegou 
 | Backend parado não mostra pendente como concluída | `offlineSync.test.ts` › backend parado (rede, 503, timeout) |
 | Schema versionado | `offlineDatabase.test.ts` › schema SQLite |
 | Token fora do SQLite | `offlineCache.test.ts` › o token nunca é gravado no arquivo SQLite |
+## Migração v3 — localização pendente de planta
+
+A tabela `plant_location_drafts` mantém a última captura explícita de cada planta enquanto o backend está indisponível. A chave composta `(user_id, plant_id)` separa as contas e substitui uma captura anterior da mesma planta. Latitude e longitude têm limites geográficos; `accuracy_m` guarda a precisão reportada pelo sistema quando disponível. O envio usa `PUT /api/plants/{id}/location`; a linha só é removida após resposta bem-sucedida. Não há rastreamento em segundo plano.

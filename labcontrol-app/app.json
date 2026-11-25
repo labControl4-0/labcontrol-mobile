@@ -48,6 +48,12 @@
           "color": "#2563EB",
           "defaultChannel": "machine-alerts"
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Permita que o LabControl use sua localização somente quando você pedir para registrar a posição geográfica da planta."
+        }
       ]
     ],
     "experiments": {
