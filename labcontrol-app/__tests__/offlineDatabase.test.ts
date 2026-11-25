@@ -35,7 +35,12 @@ describe("schema SQLite", () => {
     );
 
     expect(version?.user_version).toBe(SCHEMA_VERSION);
-    expect(tables.map((t) => t.name)).toEqual(["cache_entries", "machine_locations", "occurrences"]);
+    expect(tables.map((t) => t.name)).toEqual([
+      "cache_entries",
+      "machine_locations",
+      "occurrences",
+      "plant_location_drafts",
+    ]);
   });
 
   it("reabrir um banco já migrado não roda a migração de novo", async () => {
