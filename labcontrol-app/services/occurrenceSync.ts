@@ -70,6 +70,10 @@ export function notifySyncChanged() {
  * Corpo enviado à API. O backend atual (CreateMachineEventDto) só lê
  * machineId, eventType e message. Os demais campos seguem para o contrato de
  * sincronização do BE-06 (UUID do cliente e versão local).
+ *
+ * A localização (opcional) vai em campos próprios, prontos para quando a API
+ * tiver latitude/longitude no evento, e também dentro da message, que é o que
+ * a API atual guarda.
  */
 export function buildEventPayload(o: Occurrence) {
   return {
@@ -81,6 +85,13 @@ export function buildEventPayload(o: Occurrence) {
     sectorId: o.sectorId,
     description: o.description,
     occurredAt: o.occurredAt,
+    ...(o.location
+      ? {
+          latitude: o.location.latitude,
+          longitude: o.location.longitude,
+          locationAccuracy: o.location.accuracy,
+        }
+      : {}),
   };
 }
 

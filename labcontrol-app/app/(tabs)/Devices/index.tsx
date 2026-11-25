@@ -205,6 +205,22 @@ export default function MachinesScreen() {
             : `${totalMachines} máquina(s) em ${groups.length} lab(s). Toque numa máquina para registrar uma ocorrência.`}
         </Text>
 
+        <TouchableOpacity
+          style={styles.mapButton}
+          onPress={() => router.push("/MachineMap" as any)}
+          accessibilityRole="button"
+          accessibilityLabel="Ver máquinas no mapa"
+        >
+          <Ionicons name="map" size={18} color="#2563EB" />
+          <View style={styles.cardBody}>
+            <Text style={styles.mapButtonTitle}>Ver no mapa</Text>
+            <Text style={styles.cardModel}>
+              Sua localização, distância até cada máquina e máquinas de exemplo.
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+        </TouchableOpacity>
+
         {loading ? (
           <ActivityIndicator
             size="large"
@@ -317,6 +333,22 @@ const styles = StyleSheet.create({
 
   section: {
     marginBottom: 24,
+  },
+
+  mapButton: {
+    backgroundColor: "#EFF6FF",
+    borderRadius: 18,
+    padding: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 20,
+  },
+
+  mapButtonTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#1D4ED8",
   },
 
   sectionHeader: {

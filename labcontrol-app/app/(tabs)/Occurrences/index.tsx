@@ -17,6 +17,7 @@ import Toast from "react-native-toast-message";
 import { BottomNavBar } from "../../components/BottomNavBar";
 import { getAuthSession } from "../../../lib/auth";
 import { SYNC_STATUS_UI, eventTypeLabel } from "../../../lib/offline/occurrenceForm";
+import { formatAccuracy, formatCoordinates } from "../../../lib/geo/distance";
 import {
   listOccurrences,
   requeueFailed,
@@ -70,6 +71,7 @@ function syncMessage(result: SyncResult | null) {
 type CardActions = {
   onRetry: (id: string) => void;
   onEdit: (item: Occurrence) => void;
+  onShowOnMap: (item: Occurrence) => void;
   onKeepServer: (item: Occurrence) => void;
   onKeepBoth: (item: Occurrence) => void;
 };
@@ -130,6 +132,21 @@ function OccurrenceCard({ item, actions }: { item: Occurrence; actions: CardActi
       <Text style={styles.cardSector}>Setor: {item.sectorName ?? item.sectorId}</Text>
       <Text style={styles.cardDescription}>{item.description}</Text>
       <Text style={styles.cardMeta}>Ocorrido em {formatDate(item.occurredAt)}</Text>
+
+      {item.location ? (
+        <TouchableOpacity
+          style={styles.locationRow}
+          onPress={() => actions.onShowOnMap(item)}
+          accessibilityRole="button"
+          accessibilityLabel="Ver local da ocorrência no mapa"
+        >
+          <Ionicons name="location-outline" size={14} color="#7C3AED" />
+          <Text style={styles.cardMeta}>
+            {formatCoordinates(item.location)} ({formatAccuracy(item.location.accuracy)})
+          </Text>
+          <Text style={styles.locationLink}>Ver no mapa</Text>
+        </TouchableOpacity>
+      ) : null}
 
       <View style={[styles.status, { backgroundColor: `${status.color}14` }]}>
         <Ionicons name={status.icon as any} size={15} color={status.color} />
@@ -213,6 +230,19 @@ export default function OccurrencesScreen() {
 
   const actions: CardActions = {
     onRetry: handleRetry,
+    onShowOnMap: (item) => {
+      if (!item.location) return;
+      router.push({
+        pathname: "/MachineMap",
+        params: {
+          focusId: item.id,
+          focusLabel: `Ocorrência em ${item.machineName}`,
+          focusLat: String(item.location.latitude),
+          focusLng: String(item.location.longitude),
+          focusAccuracy: item.location.accuracy === null ? "" : String(item.location.accuracy),
+        },
+      } as any);
+    },
     onEdit: (item) =>
       router.push({
         pathname: "/NewOccurrence",
@@ -360,6 +390,8 @@ const styles = StyleSheet.create({
   cardSector: { fontSize: 12, color: "#6B7280" },
   cardDescription: { fontSize: 13, color: "#111827", lineHeight: 18 },
   cardMeta: { fontSize: 11, color: "#6B7280" },
+  locationRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4, flexWrap: "wrap" },
+  locationLink: { fontSize: 11, fontWeight: "700", color: "#7C3AED" },
   status: {
     flexDirection: "row",
     alignItems: "center",

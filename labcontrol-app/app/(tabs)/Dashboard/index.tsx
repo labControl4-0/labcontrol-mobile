@@ -16,7 +16,6 @@ import {
   getDashboardData,
   type DashboardData,
 } from "../../../services/dasbhoardServices";
-import { mockDashboardData } from "../../../services/mockDashboard";
 import { BottomNavBar } from "../../components/BottomNavBar";
 import { getAuthSession } from "../../../lib/auth";
 
@@ -31,6 +30,7 @@ type StatCardItem = {
 type MachineMetric = {
   id?: string;
   machineId?: string;
+  machineName?: string;
   temperature?: number;
   temp?: number;
   energyConsumption?: number;
@@ -42,12 +42,14 @@ type MachineMetric = {
   timestamp?: string;
 };
 
-function getMetricEnergy(metric: MachineMetric) {
-  return metric.energyConsumption ?? metric.energy ?? metric.power ?? 0;
+function getMetricEnergy(metric: MachineMetric): number | null {
+  const value = metric.energyConsumption ?? metric.energy ?? metric.power;
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function getMetricTemperature(metric: MachineMetric) {
-  return metric.temperature ?? metric.temp ?? null;
+function getMetricTemperature(metric: MachineMetric): number | null {
+  const value = metric.temperature ?? metric.temp;
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 type BarItem = {
@@ -78,22 +80,26 @@ function buildBarData(
   format: (v: number) => string,
   getColor: (value: number, ratio: number) => { top: string; bottom: string }
 ): BarItem[] {
-  const slice = metrics.slice(-5);
-  const fallback = [120, 180, 240, 320, 210];
-  const source = slice.length > 0 ? slice : null;
-  const values = source
-    ? source.map((m) => getValue(m) ?? 0)
-    : fallback;
-  const maxValue = Math.max(...values, 1);
+  const source = metrics
+    .map((metric) => ({ metric, value: getValue(metric) }))
+    .filter(
+      (item): item is { metric: MachineMetric; value: number } =>
+        item.value !== null
+    )
+    .slice(-5);
 
-  return values.map((v, i) => {
-    const ratio = v / maxValue;
-    const color = getColor(v, ratio);
+  if (source.length === 0) return [];
+
+  const maxValue = Math.max(...source.map((item) => Math.abs(item.value)), 1);
+
+  return source.map(({ metric, value }) => {
+    const ratio = Math.abs(value) / maxValue;
+    const color = getColor(value, ratio);
     return {
-      height: Math.max(25, Math.min(100, ratio * 100)),
-      value: v,
-      label: source ? (source[i].machineId ?? `M0${i + 1}`) : `M0${i + 1}`,
-      formattedValue: format(v),
+      height: Math.min(100, ratio * 100),
+      value,
+      label: metric.machineName ?? metric.machineId ?? "Máquina",
+      formattedValue: format(value),
       colorTop: color.top,
       colorBottom: color.bottom,
     };
@@ -119,8 +125,6 @@ function StatCard({ item }: { item: StatCardItem }) {
         {item.value}
         <Text style={styles.cardUnit}> {item.unit}</Text>
       </Text>
-
-      <View style={styles.progressLine} />
     </View>
   );
 }
@@ -157,11 +161,13 @@ export default function DashboardScreen() {
 
       setUserName(sessionName);
 
-      setDashboardData(mockDashboardData as DashboardData);
-
-    } catch (err: any) {
-      console.log("ERRO DASHBOARD:", err?.message || err);
-      setError(err?.message || "Erro ao carregar dashboard.");
+      const data = await getDashboardData();
+      setDashboardData(data);
+    } catch (err) {
+      setDashboardData(null);
+      setError(
+        err instanceof Error ? err.message : "Erro ao carregar dashboard."
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -183,14 +189,10 @@ export default function DashboardScreen() {
   const activeAlerts = dashboardData?.activeAlerts ?? 0;
 
   const metrics = (dashboardData?.metrics ?? []) as MachineMetric[];
-
-  const energyValues = metrics
-    .map(getMetricEnergy)
-    .filter((value) => typeof value === "number" && value > 0);
-
-  const temperatureValues = metrics
-    .map(getMetricTemperature)
-    .filter((value): value is number => typeof value === "number");
+  const hasEnergyData = metrics.some((metric) => getMetricEnergy(metric) !== null);
+  const hasTemperatureData = metrics.some(
+    (metric) => getMetricTemperature(metric) !== null
+  );
 
   const energyBars = buildBarData(
     metrics,
@@ -210,30 +212,44 @@ export default function DashboardScreen() {
       {
         icon: "flash-outline",
         title: "Total Energy",
-        value: loading ? "--" : totalEnergy.toFixed(0),
+        value:
+          loading || !dashboardData
+            ? "--"
+            : hasEnergyData
+              ? totalEnergy.toFixed(0)
+              : "—",
         unit: "kW",
-        badge: "Live",
+        badge: "API",
       },
       {
         icon: "thermometer-outline",
         title: "Avg Temp",
-        value: loading ? "--" : avgTemp.toFixed(1),
+        value:
+          loading || !dashboardData
+            ? "--"
+            : hasTemperatureData
+              ? avgTemp.toFixed(1)
+              : "—",
         unit: "°C",
-        badge: "Live",
+        badge: "API",
       },
       {
         icon: "person-outline",
         title: "Registered Users",
-        value: loading ? "--" : String(registeredUsers),
+        value: loading || !dashboardData ? "--" : String(registeredUsers),
         unit: "users",
-        badge: "Live",
+        badge: "API",
       },
       {
         icon: "warning-outline",
         title: "System Alerts",
-        value: loading ? "--" : String(activeAlerts),
+        value: loading || !dashboardData ? "--" : String(activeAlerts),
         unit: "Active",
-        badge: activeAlerts > 0 ? "New" : "OK",
+        badge: loading || !dashboardData
+          ? "—"
+          : activeAlerts > 0
+            ? "New"
+            : "OK",
       },
     ],
     [loading, totalEnergy, avgTemp, registeredUsers, activeAlerts]
@@ -313,22 +329,28 @@ export default function DashboardScreen() {
           </View>
 
           <View style={styles.barChartArea}>
-            {energyBars.map((bar, index) => (
-              <View key={index} style={styles.barColumn}>
-                <Text style={[styles.barValueLabel, { color: bar.colorBottom }]}>
-                  {bar.formattedValue}
-                </Text>
-                <View style={styles.barTrack}>
-                  <View
-                    style={[
-                      styles.barFill,
-                      { height: `${bar.height}%` as any, backgroundColor: bar.colorBottom },
-                    ]}
-                  />
+            {energyBars.length ? (
+              energyBars.map((bar, index) => (
+                <View key={`${bar.label}-${index}`} style={styles.barColumn}>
+                  <Text style={[styles.barValueLabel, { color: bar.colorBottom }]}>
+                    {bar.formattedValue}
+                  </Text>
+                  <View style={styles.barTrack}>
+                    <View
+                      style={[
+                        styles.barFill,
+                        { height: `${bar.height}%` as any, backgroundColor: bar.colorBottom },
+                      ]}
+                    />
+                  </View>
+                  <Text style={styles.barXLabel}>{bar.label}</Text>
                 </View>
-                <Text style={styles.barXLabel}>{bar.label}</Text>
-              </View>
-            ))}
+              ))
+            ) : (
+              <Text style={styles.chartEmptyText}>
+                Nenhuma métrica de consumo cadastrada.
+              </Text>
+            )}
           </View>
         </View>
 
@@ -347,22 +369,28 @@ export default function DashboardScreen() {
           </View>
 
           <View style={styles.barChartArea}>
-            {temperatureBars.map((bar, index) => (
-              <View key={index} style={styles.barColumn}>
-                <Text style={[styles.barValueLabel, { color: bar.colorBottom }]}>
-                  {bar.formattedValue}
-                </Text>
-                <View style={styles.barTrack}>
-                  <View
-                    style={[
-                      styles.barFill,
-                      { height: `${bar.height}%` as any, backgroundColor: bar.colorBottom },
-                    ]}
-                  />
+            {temperatureBars.length ? (
+              temperatureBars.map((bar, index) => (
+                <View key={`${bar.label}-${index}`} style={styles.barColumn}>
+                  <Text style={[styles.barValueLabel, { color: bar.colorBottom }]}>
+                    {bar.formattedValue}
+                  </Text>
+                  <View style={styles.barTrack}>
+                    <View
+                      style={[
+                        styles.barFill,
+                        { height: `${bar.height}%` as any, backgroundColor: bar.colorBottom },
+                      ]}
+                    />
+                  </View>
+                  <Text style={styles.barXLabel}>{bar.label}</Text>
                 </View>
-                <Text style={styles.barXLabel}>{bar.label}</Text>
-              </View>
-            ))}
+              ))
+            ) : (
+              <Text style={styles.chartEmptyText}>
+                Nenhuma métrica de temperatura cadastrada.
+              </Text>
+            )}
           </View>
         </View>
       </ScrollView>
@@ -498,13 +526,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#6B7280",
   },
-  progressLine: {
-    height: 4,
-    backgroundColor: "#4F46E5",
-    borderRadius: 10,
-    marginTop: 14,
-    width: "70%",
-  },
   largeCard: {
     backgroundColor: "#fff",
     borderRadius: 20,
@@ -542,6 +563,11 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "flex-end",
     marginTop: 16,
+  },
+  chartEmptyText: {
+    color: "#6B7280",
+    fontSize: 12,
+    paddingVertical: 18,
   },
   barColumn: {
     flex: 1,

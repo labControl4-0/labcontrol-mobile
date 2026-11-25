@@ -75,6 +75,32 @@ A tabela `occurrences` é recriada, porque o SQLite não altera um `CHECK` exist
 
 Estados, gatilhos, backoff, duplicidade e conflitos: `docs/MATRIZ_CENARIOS_OFFLINE.md`.
 
+### Versão 3 (geolocalização)
+
+Detalhes do fluxo: `docs/GEOLOCALIZACAO.md`.
+
+#### `machine_locations` (nova)
+
+Posição de uma máquina fixada no aparelho pelo botão "Fixar aqui", enquanto a API não tem latitude/longitude em `Machine`.
+
+| Coluna | Tipo | Obrigatório | Descrição |
+|---|---|---|---|
+| `user_id` | TEXT PK | sim | Dono do registro. Toda consulta filtra por ele. |
+| `machine_id` | TEXT PK | sim | Id da máquina na API |
+| `machine_name` | TEXT | sim | Nome exibido |
+| `plant_id` | TEXT | não | Laboratório da máquina |
+| `latitude` | REAL | sim | `CHECK` entre -90 e 90 |
+| `longitude` | REAL | sim | `CHECK` entre -180 e 180 |
+| `accuracy` | REAL | não | Precisão do GPS em metros, quando o aparelho informa |
+| `captured_at` | TEXT | sim | Data/hora ISO da leitura |
+
+#### `occurrences` (colunas novas, todas opcionais)
+
+| Coluna | Descrição |
+|---|---|
+| `latitude`, `longitude` | Onde o **técnico** estava ao registrar, só se ele ligou "Anexar minha localização". `NULL` nas ocorrências antigas. |
+| `location_accuracy` | Precisão da leitura, em metros |
+
 ## Estados de sincronização (MOB-03)
 
 > Atualizado no MOB-04: veja a máquina de estados completa, com `conflict` e a conferência antes do reenvio, em `docs/MATRIZ_CENARIOS_OFFLINE.md`.

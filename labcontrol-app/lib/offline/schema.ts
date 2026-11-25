@@ -90,6 +90,28 @@ export const MIGRATIONS: readonly string[] = [
   CREATE INDEX idx_occurrences_user_status
     ON occurrences (user_id, sync_status, created_at);
   `,
+
+  // v3 (geolocalização): posição das máquinas fixada no aparelho e posição
+  // opcional do técnico no momento da ocorrência. Ver docs/GEOLOCALIZACAO.md.
+  `
+  CREATE TABLE machine_locations (
+    user_id       TEXT NOT NULL,
+    machine_id    TEXT NOT NULL,
+    machine_name  TEXT NOT NULL,
+    plant_id      TEXT,
+    latitude      REAL NOT NULL CHECK (latitude BETWEEN -90 AND 90),
+    longitude     REAL NOT NULL CHECK (longitude BETWEEN -180 AND 180),
+    accuracy      REAL,
+    captured_at   TEXT NOT NULL,
+    PRIMARY KEY (user_id, machine_id)
+  );
+
+  ALTER TABLE occurrences ADD COLUMN latitude REAL
+    CHECK (latitude IS NULL OR latitude BETWEEN -90 AND 90);
+  ALTER TABLE occurrences ADD COLUMN longitude REAL
+    CHECK (longitude IS NULL OR longitude BETWEEN -180 AND 180);
+  ALTER TABLE occurrences ADD COLUMN location_accuracy REAL;
+  `,
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length;

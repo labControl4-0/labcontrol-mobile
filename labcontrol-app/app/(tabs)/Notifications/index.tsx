@@ -1,5 +1,7 @@
-import React from "react";
+import React, { useCallback, useState } from "react";
 import {
+  ActivityIndicator,
+  RefreshControl,
   View,
   Text,
   StyleSheet,
@@ -8,13 +10,18 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { BottomNavBar } from "../../components/BottomNavBar";
 import { PushSetupCard } from "../../components/PushSetupCard";
+import {
+  getAllMachineEvents,
+  type MachineEvent,
+} from "../../../services/notificationServices";
 
 type Tone = "warning" | "success" | "info" | "error";
 
 type NotificationItem = {
+  id: string;
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
   subtitle: string;
@@ -22,57 +29,70 @@ type NotificationItem = {
   tone: Tone;
 };
 
-const notifications: NotificationItem[] = [
-  {
-    icon: "alert-circle-outline",
-    title: "Máquina requer atenção",
-    subtitle: "Torno CNC 01 apresentou vibração acima do limite.",
-    time: "2 min atrás",
-    tone: "warning",
-  },
-  {
-    icon: "close-circle-outline",
-    title: "Falha detectada",
-    subtitle: "Impressora 3D Ender 3 interrompeu a operação.",
-    time: "8 min atrás",
-    tone: "error",
-  },
-  {
-    icon: "construct-outline",
-    title: "Manutenção programada",
-    subtitle: "Fresadora Industrial será inspecionada amanhã.",
-    time: "30 min atrás",
-    tone: "info",
-  },
-  {
-    icon: "checkmark-circle-outline",
-    title: "Problema resolvido",
-    subtitle: "Esteira de Separação voltou a operar normalmente.",
-    time: "1h atrás",
-    tone: "success",
-  },
-  {
-    icon: "thermometer-outline",
-    title: "Temperatura elevada",
-    subtitle: "Router CNC atingiu 78°C.",
-    time: "2h atrás",
-    tone: "warning",
-  },
-  {
-    icon: "water-outline",
-    title: "Umidade crítica",
-    subtitle: "Sensor detectou umidade acima do recomendado.",
-    time: "3h atrás",
-    tone: "warning",
-  },
-  {
-    icon: "checkmark-done-circle-outline",
-    title: "Todos os sistemas operacionais",
-    subtitle: "Lab de Automação funcionando normalmente.",
-    time: "4h atrás",
-    tone: "success",
-  },
-];
+function getEventTone(event: MachineEvent): Tone {
+  if (event.resolved === true || event.isResolved === true) return "success";
+
+  const typeAndSeverity =
+    `${event.eventType ?? ""} ${event.severity ?? ""}`.toLowerCase();
+  if (/failure|error|critical|falha|erro|cr[ií]tico/.test(typeAndSeverity)) {
+    return "error";
+  }
+  if (/warning|alert|aviso|alerta/.test(typeAndSeverity)) return "warning";
+  return "info";
+}
+
+function getEventTitle(event: MachineEvent) {
+  if (event.title?.trim()) return event.title;
+
+  const type = (event.eventType ?? "").toLowerCase();
+  if (/failure|error|falha|erro/.test(type)) return "Falha detectada";
+  if (/warning|alert|aviso|alerta/.test(type)) return "Alerta da máquina";
+  if (/maintenance|manuten/.test(type)) return "Manutenção";
+  return event.eventType || "Evento da máquina";
+}
+
+function formatEventTime(value?: string) {
+  if (!value) return "Data não informada";
+
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return "Data não informada";
+
+  const minutes = Math.floor((Date.now() - timestamp) / 60_000);
+  if (minutes < 1) return "Agora";
+  if (minutes < 60) return `Há ${minutes} min`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `Há ${hours} h`;
+
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `Há ${days} d`;
+
+  return new Date(timestamp).toLocaleDateString("pt-BR");
+}
+
+function toNotificationItem(event: MachineEvent): NotificationItem {
+  const tone = getEventTone(event);
+  const iconByTone: Record<Tone, keyof typeof Ionicons.glyphMap> = {
+    warning: "alert-circle-outline",
+    success: "checkmark-circle-outline",
+    info: "construct-outline",
+    error: "close-circle-outline",
+  };
+  const details =
+    event.description?.trim() ||
+    event.message?.trim() ||
+    event.eventType ||
+    "Evento registrado no servidor.";
+
+  return {
+    id: event.id,
+    icon: iconByTone[tone],
+    title: getEventTitle(event),
+    subtitle: event.machineName ? `${event.machineName}: ${details}` : details,
+    time: formatEventTime(event.createdAt ?? event.timestamp),
+    tone,
+  };
+}
 
 function NotificationCard({ item }: { item: NotificationItem }) {
   const iconColor =
@@ -111,11 +131,43 @@ function NotificationCard({ item }: { item: NotificationItem }) {
 export default function NotificationsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ from?: string }>();
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState("");
 
   const backRoute =
     params.from === "profile"
       ? "/UserProfileSettings"
       : "/Dashboard";
+
+  const loadNotifications = useCallback(async () => {
+    setError("");
+    try {
+      const events = await getAllMachineEvents();
+      setNotifications(events.map(toNotificationItem));
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Não foi possível carregar as notificações."
+      );
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadNotifications();
+    }, [loadNotifications])
+  );
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    void loadNotifications();
+  };
 
   const warningCount = notifications.filter(
     (n) => n.tone === "warning"
@@ -130,6 +182,9 @@ export default function NotificationsScreen() {
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
       >
         <View style={styles.header}>
           <TouchableOpacity
@@ -162,47 +217,81 @@ export default function NotificationsScreen() {
 
         <View style={styles.summaryCard}>
           <Text style={styles.summaryLabel}>
-            RESUMO DE HOJE
+            EVENTOS REGISTRADOS
           </Text>
 
           <Text style={styles.summaryValue}>
-            {notifications.length} notificações
+            {loading
+              ? "Carregando..."
+              : error
+                ? "Indisponível"
+                : `${notifications.length} notificações`}
           </Text>
 
-          <View style={styles.summaryStats}>
-            <View style={styles.stat}>
-              <View
-                style={[
-                  styles.dot,
-                  { backgroundColor: "#DC2626" },
-                ]}
-              />
-              <Text style={styles.statText}>
-                {errorCount} erros
-              </Text>
-            </View>
+          {!loading && !error ? (
+            <View style={styles.summaryStats}>
+              <View style={styles.stat}>
+                <View
+                  style={[
+                    styles.dot,
+                    { backgroundColor: "#DC2626" },
+                  ]}
+                />
+                <Text style={styles.statText}>
+                  {errorCount} erros
+                </Text>
+              </View>
 
-            <View style={styles.stat}>
-              <View
-                style={[
-                  styles.dot,
-                  { backgroundColor: "#F59E0B" },
-                ]}
-              />
-              <Text style={styles.statText}>
-                {warningCount} alertas
-              </Text>
+              <View style={styles.stat}>
+                <View
+                  style={[
+                    styles.dot,
+                    { backgroundColor: "#F59E0B" },
+                  ]}
+                />
+                <Text style={styles.statText}>
+                  {warningCount} alertas
+                </Text>
+              </View>
             </View>
-          </View>
+          ) : null}
         </View>
 
         <View style={styles.notificationsList}>
-          {notifications.map((item, index) => (
-            <NotificationCard
-              key={index}
-              item={item}
-            />
-          ))}
+          {loading ? (
+            <View style={styles.stateCard}>
+              <ActivityIndicator size="small" color="#2563EB" />
+              <Text style={styles.stateText}>Carregando eventos...</Text>
+            </View>
+          ) : error ? (
+            <View style={styles.stateCard}>
+              <Text style={styles.stateError}>{error}</Text>
+              <TouchableOpacity
+                style={styles.retryButton}
+                onPress={() => void loadNotifications()}
+                accessibilityRole="button"
+              >
+                <Text style={styles.retryButtonText}>Tentar novamente</Text>
+              </TouchableOpacity>
+            </View>
+          ) : notifications.length === 0 ? (
+            <View style={styles.stateCard}>
+              <Ionicons
+                name="notifications-off-outline"
+                size={32}
+                color="#9CA3AF"
+              />
+              <Text style={styles.stateTitle}>Nenhum evento encontrado</Text>
+              <Text style={styles.stateText}>
+                Os eventos das máquinas aparecerão aqui quando forem
+                registrados.
+              </Text>
+            </View>
+          ) : (
+            notifications.map((item) => (
+              <NotificationCard key={item.id} item={item} />
+            ))
+          )}
         </View>
       </ScrollView>
 
@@ -290,6 +379,44 @@ const styles = StyleSheet.create({
 
   notificationsList: {
     gap: 12,
+  },
+
+  stateCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 22,
+    alignItems: "center",
+    gap: 10,
+  },
+
+  stateTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#111827",
+  },
+
+  stateText: {
+    fontSize: 13,
+    color: "#6B7280",
+    textAlign: "center",
+  },
+
+  stateError: {
+    color: "#B91C1C",
+    fontSize: 13,
+    textAlign: "center",
+  },
+
+  retryButton: {
+    borderRadius: 10,
+    backgroundColor: "#E5E7EB",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+
+  retryButtonText: {
+    color: "#1F2937",
+    fontWeight: "700",
   },
 
   card: {

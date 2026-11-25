@@ -2,7 +2,8 @@
 {
   "extends": "./node_modules/expo/tsconfig.base.json",
   "compilerOptions": {
-    "jsx": "react-native"
+    "jsx": "react-native",
+    "types": ["jest", "node"]
   },
   "include": [
     "**/*.ts",

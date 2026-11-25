@@ -1,12 +1,13 @@
 // Formulário de ocorrência de máquina. Grava primeiro no SQLite (funciona sem
 // rede) e depois tenta enviar. O resultado mostrado é o estado real gravado.
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -29,7 +30,10 @@ import {
   createOccurrence,
   getOccurrence,
   updateOccurrence,
+  type OccurrenceLocation,
 } from "../../../lib/offline/occurrenceRepository";
+import { formatAccuracy, formatCoordinates } from "../../../lib/geo/distance";
+import { getCurrentPosition, LocationError } from "../../../lib/geo/location";
 import { notifySyncChanged, syncPendingOccurrences } from "../../../services/occurrenceSync";
 
 const param = (value: string | string[] | undefined) =>
@@ -58,6 +62,14 @@ export default function NewOccurrenceScreen() {
   const [errors, setErrors] = useState<FormErrors>({});
   const [saving, setSaving] = useState(false);
 
+  // Localização do técnico (opcional, desligada por padrão). Falhar aqui nunca
+  // impede salvar: a ocorrência segue sem coordenadas.
+  const [attachLocation, setAttachLocation] = useState(false);
+  const [location, setLocation] = useState<OccurrenceLocation | null>(null);
+  const [locating, setLocating] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const locationRequest = useRef(0);
+
   useEffect(() => {
     if (!editingId) return;
     (async () => {
@@ -67,11 +79,45 @@ export default function NewOccurrenceScreen() {
       setEventType(current.eventType);
       setDescription(current.description);
       setOccurredAtText(formatLocalDateTime(new Date(current.occurredAt)));
+      setLocation(current.location);
     })().catch(() => undefined);
   }, [editingId]);
 
+  const toggleLocation = async (value: boolean) => {
+    // Cada pedido tem um número: resposta de um pedido antigo (ou cancelado
+    // ao desligar o interruptor) é ignorada.
+    const request = ++locationRequest.current;
+    setAttachLocation(value);
+    setLocationError(null);
+    setLocation(null);
+
+    if (!value) {
+      setLocating(false);
+      return;
+    }
+
+    setLocating(true);
+    try {
+      const position = await getCurrentPosition();
+      if (request !== locationRequest.current) return;
+      setLocation({
+        latitude: position.latitude,
+        longitude: position.longitude,
+        accuracy: position.accuracy,
+      });
+    } catch (error) {
+      if (request !== locationRequest.current) return;
+      setAttachLocation(false);
+      setLocationError(
+        error instanceof LocationError ? error.message : "Não foi possível obter a localização."
+      );
+    } finally {
+      if (request === locationRequest.current) setLocating(false);
+    }
+  };
+
   const handleSave = async () => {
-    if (saving) return;
+    if (saving || locating) return;
 
     const result = validateOccurrence({
       machineId: machine.id,
@@ -118,7 +164,13 @@ export default function NewOccurrenceScreen() {
         }
         occurrenceId = editingId;
       } else {
-        occurrenceId = (await createOccurrence({ ...result.value, userId })).id;
+        occurrenceId = (
+          await createOccurrence({
+            ...result.value,
+            userId,
+            location: attachLocation ? location : null,
+          })
+        ).id;
       }
       notifySyncChanged();
 
@@ -248,22 +300,77 @@ export default function NewOccurrenceScreen() {
             <Text style={styles.fieldError}>{errors.occurredAtText}</Text>
           ) : null}
 
+          <View style={[styles.card, styles.mt]}>
+            {editingId ? (
+              <>
+                <Text style={styles.label}>LOCALIZAÇÃO</Text>
+                <Text style={styles.locationText}>
+                  {location
+                    ? `${formatCoordinates(location)} (${formatAccuracy(location.accuracy)})`
+                    : "Sem localização anexada."}
+                </Text>
+              </>
+            ) : (
+              <>
+                <View style={styles.locationRow}>
+                  <View style={styles.flex}>
+                    <Text style={styles.locationTitle}>Anexar minha localização</Text>
+                    <Text style={styles.locationHint}>
+                      Opcional. Registra onde você está agora, não a posição da máquina.
+                    </Text>
+                  </View>
+                  <Switch
+                    value={attachLocation}
+                    onValueChange={(value) => void toggleLocation(value)}
+                    disabled={saving}
+                    accessibilityLabel="Anexar minha localização à ocorrência"
+                  />
+                </View>
+                {locating ? (
+                  <View style={styles.locationStatus}>
+                    <ActivityIndicator size="small" color="#2563EB" />
+                    <Text style={styles.locationHint}>
+                      Obtendo localização... Desligue para salvar sem ela.
+                    </Text>
+                  </View>
+                ) : null}
+                {attachLocation && location ? (
+                  <View style={styles.locationStatus}>
+                    <Ionicons name="location" size={16} color="#7C3AED" />
+                    <Text style={styles.locationText}>
+                      {formatCoordinates(location)} ({formatAccuracy(location.accuracy)})
+                    </Text>
+                  </View>
+                ) : null}
+                {locationError ? (
+                  <Text style={styles.fieldError}>
+                    {locationError} A ocorrência pode ser salva sem localização.
+                  </Text>
+                ) : null}
+              </>
+            )}
+          </View>
+
           <Text style={styles.hint}>
             A ocorrência é salva no aparelho primeiro. Sem conexão, ela fica pendente e é enviada
             automaticamente depois.
           </Text>
 
           <TouchableOpacity
-            style={[styles.button, saving && styles.buttonDisabled]}
+            style={[styles.button, (saving || locating) && styles.buttonDisabled]}
             onPress={handleSave}
-            disabled={saving}
+            disabled={saving || locating}
             accessibilityRole="button"
           >
             {saving ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
               <Text style={styles.buttonText}>
-                {editingId ? "Salvar alterações" : "Salvar ocorrência"}
+                {locating
+                  ? "Aguardando localização..."
+                  : editingId
+                    ? "Salvar alterações"
+                    : "Salvar ocorrência"}
               </Text>
             )}
           </TouchableOpacity>
@@ -328,4 +435,9 @@ const styles = StyleSheet.create({
   buttonText: { color: "#FFFFFF", fontSize: 15, fontWeight: "700" },
   errorText: { fontSize: 14, color: "#6B7280", textAlign: "center" },
   link: { fontSize: 14, fontWeight: "700", color: "#2563EB" },
+  locationRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  locationTitle: { fontSize: 14, fontWeight: "700", color: "#111827", marginBottom: 2 },
+  locationHint: { fontSize: 12, color: "#6B7280", lineHeight: 17, flexShrink: 1 },
+  locationStatus: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 10 },
+  locationText: { fontSize: 13, fontWeight: "600", color: "#111827" },
 });

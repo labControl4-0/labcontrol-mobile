@@ -43,6 +43,18 @@
       "expo-secure-store",
       "expo-sqlite",
       [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "O LabControl usa sua localização para mostrar as máquinas próximas no mapa e, se você escolher, registrar onde uma ocorrência foi aberta.",
+          "isAndroidBackgroundLocationEnabled": false,
+          "isAndroidForegroundServiceEnabled": false,
+          "locationAlwaysAndWhenInUsePermission": false,
+          "locationAlwaysPermission": false,
+          "locationFullAccuracyPermission": false,
+          "motionUsagePermission": false
+        }
+      ],
+      [
         "expo-notifications",
         {
           "color": "#2563EB",

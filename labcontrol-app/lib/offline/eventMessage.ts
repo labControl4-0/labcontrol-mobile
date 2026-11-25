@@ -12,16 +12,28 @@ export type EventContent = {
   sectorId: string;
   sectorName: string | null;
   occurredAt: string;
+  /** Posição do técnico ao registrar, se ele escolheu anexar. */
+  location?: { latitude: number; longitude: number; accuracy: number | null } | null;
 };
 
 const DETAILS_SEPARATOR = "\n\nTipo: ";
 const REF_PATTERN = /Ref\. app: ([0-9a-fA-F-]{36})\s*$/;
 
+/** "Local: -23.500300, -47.458200 (±8 m)". A API ainda não tem campos próprios para isso. */
+function locationDetail(location: EventContent["location"]): string {
+  if (!location) return "";
+  const accuracy =
+    typeof location.accuracy === "number" ? ` (±${Math.round(location.accuracy)} m)` : "";
+  return (
+    `Local: ${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)}${accuracy} | `
+  );
+}
+
 export function buildEventMessage(o: EventContent): string {
   const sector = o.sectorName ? `${o.sectorName} (${o.sectorId})` : o.sectorId;
   return (
     `${o.description}${DETAILS_SEPARATOR}${eventTypeLabel(o.eventType)} | Setor: ${sector} | ` +
-    `Ocorrido em: ${o.occurredAt} | Ref. app: ${o.id}`
+    `Ocorrido em: ${o.occurredAt} | ${locationDetail(o.location)}Ref. app: ${o.id}`
   );
 }
 

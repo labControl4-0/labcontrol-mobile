@@ -22,6 +22,7 @@ type Machine = {
 type MachineMetric = {
   id?: string;
   machineId?: string;
+  machineName?: string;
   temperature?: number;
   temp?: number;
   energyConsumption?: number;
@@ -50,11 +51,13 @@ export type DashboardData = {
 };
 
 function getMetricEnergy(metric: MachineMetric) {
-  return metric.energyConsumption ?? metric.energy ?? metric.power ?? 0;
+  const value = metric.energyConsumption ?? metric.energy ?? metric.power;
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 function getMetricTemperature(metric: MachineMetric) {
-  return metric.temperature ?? metric.temp ?? null;
+  const value = metric.temperature ?? metric.temp;
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 function isEventActive(event: MachineEvent) {
@@ -70,8 +73,10 @@ function isEventActive(event: MachineEvent) {
 }
 
 export async function getDashboardData(): Promise<DashboardData> {
-  const users = (await apiFetch("/users")) as User[];
-  const plants = (await apiFetch("/plants")) as Plant[];
+  const [users, plants] = await Promise.all([
+    apiFetch("/users") as Promise<User[]>,
+    apiFetch("/plants") as Promise<Plant[]>,
+  ]);
 
   if (!plants.length) {
     return {
@@ -86,10 +91,7 @@ export async function getDashboardData(): Promise<DashboardData> {
 
   const machinesResults = await Promise.all(
     plants.map((plant) =>
-      apiFetch(`/machines/plant/${plant.id}`).catch((error) => {
-        console.log(`Erro ao buscar máquinas da planta ${plant.id}:`, error.message);
-        return [];
-      })
+      apiFetch(`/machines/plant/${plant.id}`) as Promise<Machine[]>
     )
   );
 
@@ -107,20 +109,20 @@ export async function getDashboardData(): Promise<DashboardData> {
   }
 
   const metricsResults = await Promise.all(
-    machines.map((machine) =>
-      apiFetch(`/machine-metrics/machine/${machine.id}`).catch((error) => {
-        console.log(`Erro ao buscar métricas da máquina ${machine.id}:`, error.message);
-        return [];
-      })
-    )
+    machines.map(async (machine) => {
+      const metrics = (await apiFetch(
+        `/machine-metrics/machine/${machine.id}`
+      )) as MachineMetric[];
+      return metrics.map((metric) => ({
+        ...metric,
+        machineName: machine.name ?? machine.id,
+      }));
+    })
   );
 
   const eventsResults = await Promise.all(
     machines.map((machine) =>
-      apiFetch(`/machine-events/machine/${machine.id}`).catch((error) => {
-        console.log(`Erro ao buscar eventos da máquina ${machine.id}:`, error.message);
-        return [];
-      })
+      apiFetch(`/machine-events/machine/${machine.id}`) as Promise<MachineEvent[]>
     )
   );
 
