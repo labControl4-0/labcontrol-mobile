@@ -147,10 +147,17 @@ export async function unregisterPushDevice(): Promise<void> {
   // eles mesmos removem o aparelho no servidor. O logout espera por eles
   // (limitado pelo timeout das requisições) para a remoção usar a sessão válida.
   registrationGeneration += 1;
-  await Promise.race([
-    Promise.allSettled([...inFlight]),
-    new Promise((resolve) => setTimeout(resolve, LOGOUT_WAIT_MS)),
-  ]);
+  let logoutTimer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      Promise.allSettled([...inFlight]),
+      new Promise<void>((resolve) => {
+        logoutTimer = setTimeout(resolve, LOGOUT_WAIT_MS);
+      }),
+    ]);
+  } finally {
+    if (logoutTimer !== undefined) clearTimeout(logoutTimer);
+  }
 
   const stored = await getPushRegistration();
   if (stored) {
